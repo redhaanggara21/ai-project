@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Summarizer Upload</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+
+<body class="bg-gray-100 p-10">
+    <div class="max-w-3xl mx-auto bg-white p-6 rounded shadow">
+        <h2 class="text-2xl font-bold mb-4">Upload Files or YouTube URLs</h2>
+        <form id="uploadForm" enctype="multipart/form-data" class="mb-4" method="POST">
+            {% csrf_token %}
+            <input type="file" name="files" multiple class="mb-4 border p-2 w-full">
+            <textarea name="youtube_urls" placeholder="Enter YouTube URLs, one per line"
+                class="mb-4 border p-2 w-full h-24"></textarea>
+            <button type="submit" class="bg-blue-500 text-white px-4 py-2 rounded">Submit</button>
+        </form>
+
+        <div class="w-full bg-gray-200 rounded h-4 mb-4">
+            <div id="progressBar" class="bg-green-500 h-4 rounded w-0"></div>
+        </div>
+
+        <h3 class="text-xl font-semibold mb-2">Download akan otomatis setelah selesai.</h3>
+    </div>
+
+    <script>
+        const form = document.getElementById("uploadForm");
+        const progressBar = document.getElementById("progressBar");
+
+        form.addEventListener("submit", async function (e) {
+            e.preventDefault();
+            let formData = new FormData(this);
+            let youtube_text = this.youtube_urls.value.split("\n").filter(u => u);
+            youtube_text.forEach((url) => formData.append("youtube_urls", url));
+
+            progressBar.style.width = "10%";
+
+            const res = await fetch("", { method: "POST", body: formData });
+            progressBar.style.width = "80%";
+
+            if (res.ok) {
+                const blob = await res.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = "summaries.docx";
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+            }
+            progressBar.style.width = "100%";
+            setTimeout(() => { progressBar.style.width = "0" }, 1000);
+        });
+    </script>
+</body>
+
+</html>

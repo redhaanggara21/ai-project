@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Universal Media Summarizer</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            padding: 0;
+        }
+
+        h1 {
+            font-size: 1.6rem;
+            text-align: center;
+        }
+
+        label,
+        select,
+        input,
+        button {
+            display: block;
+            margin: 10px auto;
+            max-width: 400px;
+            width: 100%;
+            font-size: 1rem;
+        }
+
+        button {
+            padding: 10px;
+            border: none;
+            border-radius: 6px;
+            background: #4caf50;
+            color: white;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background: #45a049;
+        }
+
+        #loading {
+            display: none;
+            margin-top: 15px;
+        }
+
+        .progress-container {
+            width: 100%;
+            background-color: #eee;
+            border-radius: 6px;
+            overflow: hidden;
+        }
+
+        .progress-bar {
+            width: 0%;
+            height: 20px;
+            background-color: #4caf50;
+            text-align: center;
+            line-height: 20px;
+            color: white;
+            font-size: 12px;
+            transition: width 0.4s ease;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        #result,
+        #filePreview {
+            margin-top: 15px;
+            text-align: center;
+        }
+
+        #filePreview {
+            font-size: 0.9rem;
+            color: #333;
+        }
+
+        .warning {
+            color: red;
+            font-weight: bold;
+        }
+
+        /* Responsive */
+        @media (max-width: 600px) {
+            body {
+                margin: 10px;
+            }
+
+            h1 {
+                font-size: 1.2rem;
+            }
+
+            button {
+                font-size: 0.9rem;
+                padding: 8px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Universal Summarizer</h1>
+
+    <label for="type">Choose Input Type:</label>
+    <select id="type">
+        <option value="pdf">📄 PDF</option>
+        <option value="docx">📝 DOCX</option>
+        <option value="image">🖼️ Image</option>
+        <option value="audio">🎵 Audio (mp3/wav)</option>
+        <option value="mp4">🎬 Video (mp4)</option>
+        <option value="youtube">▶️ YouTube URL</option>
+    </select>
+
+    <form id="uploadForm" method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        <div id="fileInput">
+            <input type="file" name="file" required>
+            <div id="filePreview" class="hidden"></div>
+        </div>
+        <div id="youtubeInput" class="hidden">
+            <input type="text" name="url" placeholder="Enter YouTube URL">
+        </div>
+        <button type="submit">Upload & Summarize</button>
+    </form>
+
+    <div id="loading">
+        <div class="progress-container">
+            <div id="progressBar" class="progress-bar">0%</div>
+        </div>
+    </div>
+
+    <div id="result"></div>
+
+    <script>
+        const typeSelect = document.getElementById("type");
+        const fileInput = document.getElementById("fileInput");
+        const youtubeInput = document.getElementById("youtubeInput");
+        const form = document.getElementById("uploadForm");
+        const loading = document.getElementById("loading");
+        const progressBar = document.getElementById("progressBar");
+        const result = document.getElementById("result");
+
+        const fileField = fileInput.querySelector("input[type=file]");
+        const youtubeField = youtubeInput.querySelector("input[type=text]");
+        const filePreview = document.getElementById("filePreview");
+
+        const MAX_FILE_SIZE_MB = 150; // batas ukuran file
+
+        // Reset file & preview saat ganti dropdown
+        function resetFileInput() {
+            fileField.value = "";
+            youtubeField.value = "";
+            filePreview.textContent = "";
+            filePreview.classList.add("hidden");
+        }
+
+        // Ganti input field sesuai pilihan + toggle required
+        typeSelect.addEventListener("change", () => {
+            resetFileInput();
+            if (typeSelect.value === "youtube") {
+                fileInput.classList.add("hidden");
+                youtubeInput.classList.remove("hidden");
+                fileField.removeAttribute("required");
+                youtubeField.setAttribute("required", "true");
+            } else {
+                fileInput.classList.remove("hidden");
+                youtubeInput.classList.add("hidden");
+                youtubeField.removeAttribute("required");
+                fileField.setAttribute("required", "true");
+            }
+        });
+
+        // Preview nama & ukuran file saat dipilih
+        fileField.addEventListener("change", () => {
+            if (fileField.files.length > 0) {
+                const file = fileField.files[0];
+                const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
+                if (sizeMB > MAX_FILE_SIZE_MB) {
+                    filePreview.innerHTML = `📂 ${file.name} - <span class="warning">⚠️ ${sizeMB} MB (exceeds ${MAX_FILE_SIZE_MB} MB limit)</span>`;
+                } else {
+                    filePreview.textContent = `📂 ${file.name} (${sizeMB} MB)`;
+                }
+                filePreview.classList.remove("hidden");
+            } else {
+                filePreview.textContent = "";
+                filePreview.classList.add("hidden");
+            }
+        });
+
+        function animateProgress() {
+            let width = 0;
+            progressBar.style.width = "0%";
+            progressBar.innerHTML = "0%";
+            let interval = setInterval(() => {
+                if (width >= 90) {  // stop di 90%, sisanya menunggu response
+                    clearInterval(interval);
+                } else {
+                    width += 5;
+                    progressBar.style.width = width + "%";
+                    progressBar.innerHTML = width + "%";
+                }
+            }, 500);
+            return interval;
+        }
+
+        form.addEventListener("submit", async (e) => {
+            e.preventDefault();
+
+            // Validasi ukuran file
+            if (fileField.files.length > 0) {
+                const file = fileField.files[0];
+                const sizeMB = file.size / (1024 * 1024);
+                if (sizeMB > MAX_FILE_SIZE_MB) {
+                    result.innerHTML = `<p style='color:red;'>❌ File is too large (${sizeMB.toFixed(2)} MB). Max allowed is ${MAX_FILE_SIZE_MB} MB.</p>`;
+                    return;
+                }
+            }
+
+            // Validasi YouTube URL
+            if (typeSelect.value === "youtube") {
+                let url = youtubeField.value.trim();
+                if (!url || (!url.includes("youtube.com") && !url.includes("youtu.be"))) {
+                    result.innerHTML = "<p style='color:red;'>❌ Please enter a valid YouTube URL</p>";
+                    return;
+                }
+            }
+
+            loading.style.display = "block";
+            result.innerHTML = "";
+            let formData = new FormData(form);
+
+            // Tentukan endpoint sesuai pilihan
+            let endpoint = "";
+            switch (typeSelect.value) {
+                case "pdf": endpoint = "{% url 'summarize_pdf' %}"; break;
+                case "docx": endpoint = "{% url 'summarize_docx' %}"; break;
+                case "image": endpoint = "{% url 'summarize_image' %}"; break;
+                case "audio": endpoint = "{% url 'summarize_audio' fmt='mp3' %}"; break;
+                case "mp4": endpoint = "{% url 'summarize_mp4' %}"; break;
+                case "youtube": endpoint = "{% url 'summarize_youtube' %}"; break;
+            }
+
+            let interval = animateProgress();
+
+            try {
+                let response = await fetch(endpoint, {
+                    method: "POST",
+                    body: formData
+                });
+
+                if (response.ok) {
+                    clearInterval(interval);
+                    progressBar.style.width = "100%";
+                    progressBar.innerHTML = "100%";
+
+                    let blob = await response.blob();
+                    let url = window.URL.createObjectURL(blob);
+                    let a = document.createElement("a");
+                    a.href = url;
+                    a.download = "summary.docx";
+                    a.click();
+                    result.innerHTML = "<p>✅ Done! Your summary.docx is downloaded.</p>";
+                } else {
+                    let error = await response.json();
+                    result.innerHTML = "<p style='color:red;'>❌ " + error.error + "</p>";
+                }
+            } catch (err) {
+                result.innerHTML = "<p style='color:red;'>❌ Failed: " + err + "</p>";
+            } finally {
+                loading.style.display = "none";
+            }
+        });
+    </script>
+</body>
+
+</html>

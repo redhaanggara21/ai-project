@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Image Clustering & AdaBoost</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            max-width: 600px;
+            margin: auto;
+        }
+
+        h1 {
+            text-align: center;
+        }
+
+        input,
+        button {
+            margin: 5px 0;
+            width: 100%;
+            padding: 8px;
+        }
+
+        .section {
+            border: 1px solid #ccc;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 6px;
+        }
+
+        #result img {
+            max-width: 100%;
+            margin-top: 10px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+
+        th,
+        td {
+            border: 1px solid #ccc;
+            padding: 5px;
+            text-align: center;
+        }
+    </style>
+</head>
+
+<body>
+
+    <h1>Image Clustering & AdaBoost</h1>
+
+    <div class="section">
+        <h2>1. Single Image Clustering (KMeans)</h2>
+        <input type="file" id="singleFile" accept="image/*">
+        <input type="number" id="nClusters" value="5" min="1" max="50" placeholder="Number of clusters">
+        <button id="clusterBtn">Cluster Image</button>
+        <div id="clusterResult"></div>
+    </div>
+
+    <div class="section">
+        <h2>2. Train AdaBoost Model</h2>
+        <input type="file" id="trainFiles" multiple accept="image/*">
+        <input type="number" id="trainLabel" placeholder="Cluster Label for all images">
+        <button id="trainBtn">Train Model</button>
+        <div id="trainResult"></div>
+    </div>
+
+    <div class="section">
+        <h2>3. Evaluate AdaBoost Model</h2>
+        <input type="file" id="evalFiles" multiple accept="image/*">
+        <input type="number" id="evalLabel" placeholder="Cluster Label for evaluation">
+        <button id="evalBtn">Evaluate Model</button>
+        <div id="evalResult"></div>
+    </div>
+
+    <script>
+        const clusterBtn = document.getElementById("clusterBtn");
+        const singleFile = document.getElementById("singleFile");
+        const nClusters = document.getElementById("nClusters");
+        const clusterResult = document.getElementById("clusterResult");
+
+        clusterBtn.addEventListener("click", async () => {
+            if (!singleFile.files.length) { alert("Select a file!"); return; }
+            let formData = new FormData();
+            formData.append("file", singleFile.files[0]);
+            formData.append("n_clusters", nClusters.value);
+
+            clusterResult.innerHTML = "Processing...";
+            try {
+                let res = await fetch("/cluster_image/", { method: "POST", body: formData });
+                if (res.ok) {
+                    let blob = await res.blob();
+                    let url = URL.createObjectURL(blob);
+                    clusterResult.innerHTML = `<img src="${url}" alt="Clustered Image">`;
+                } else {
+                    let err = await res.json();
+                    clusterResult.innerHTML = `<p style="color:red;">Error: ${err.error}</p>`;
+                }
+            } catch (e) {
+                clusterResult.innerHTML = `<p style="color:red;">${e}</p>`;
+            }
+        });
+
+        // ==================== Train AdaBoost ====================
+        const trainBtn = document.getElementById("trainBtn");
+        const trainFiles = document.getElementById("trainFiles");
+        const trainLabel = document.getElementById("trainLabel");
+        const trainResult = document.getElementById("trainResult");
+
+        trainBtn.addEventListener("click", async () => {
+            if (!trainFiles.files.length || trainLabel.value === "") { alert("Select files and label!"); return; }
+            let formData = new FormData();
+            for (let f of trainFiles.files) formData.append("files", f);
+            formData.append("label", trainLabel.value);
+            formData.append("n_clusters", nClusters.value);
+
+            trainResult.innerHTML = "Training...";
+            try {
+                let res = await fetch("/train_model/", { method: "POST", body: formData });
+                if (res.ok) {
+                    let data = await res.json();
+                    trainResult.innerHTML = `<p style="color:green;">${data.message}</p>`;
+                } else {
+                    let err = await res.json();
+                    trainResult.innerHTML = `<p style="color:red;">Error: ${err.error}</p>`;
+                }
+            } catch (e) {
+                trainResult.innerHTML = `<p style="color:red;">${e}</p>`;
+            }
+        });
+
+        // ==================== Evaluate AdaBoost ====================
+        const evalBtn = document.getElementById("evalBtn");
+        const evalFiles = document.getElementById("evalFiles");
+        const evalLabel = document.getElementById("evalLabel");
+        const evalResult = document.getElementById("evalResult");
+
+        evalBtn.addEventListener("click", async () => {
+            if (!evalFiles.files.length || evalLabel.value === "") { alert("Select files and label!"); return; }
+            let formData = new FormData();
+            for (let f of evalFiles.files) formData.append("files", f);
+            formData.append("label", evalLabel.value);
+            formData.append("n_clusters", nClusters.value);
+
+            evalResult.innerHTML = "Evaluating...";
+            try {
+                let res = await fetch("/evaluate/", { method: "POST", body: formData });
+                if (res.ok) {
+                    let data = await res.json();
+                    let html = `<p>Accuracy: ${data.accuracy}</p>`;
+                    html += "<p>Confusion Matrix:</p><table>";
+                    data.confusion_matrix.forEach(row => {
+                        html += "<tr>" + row.map(cell => `<td>${cell}</td>`).join("") + "</tr>";
+                    });
+                    html += "</table>";
+                    evalResult.innerHTML = html;
+                } else {
+                    let err = await res.json();
+                    evalResult.innerHTML = `<p style="color:red;">Error: ${err.error}</p>`;
+                }
+            } catch (e) {
+                evalResult.innerHTML = `<p style="color:red;">${e}</p>`;
+            }
+        });
+    </script>
+
+</body>
+
+</html>

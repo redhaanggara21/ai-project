@@ -1,0 +1,860 @@
+{% extends "myproject/base.html" %}
+{% block content %}
+
+<div class="dashboard-grid">
+
+    <!-- 1. FORM PILIHAN -->
+    <div class="dashboard-section">
+        <h4>Form Pilihan</h4>
+
+        <div class="mb-1 d-flex gap-1 flex-wrap">
+            <button class="btn btn-dark btn-sm" id="process-btn" disabled>Process</button>
+            <button class="btn btn-secondary btn-sm" id="reset-btn">Reset</button>
+        </div>
+
+        <p id="preview" class="fw-bold text-primary mb-1">Belum ada pilihan</p>
+
+        <div class="progress mb-2" style="height:14px;">
+            <div class="progress-bar bg-info" id="form-progress" style="width:0%;"></div>
+        </div>
+
+        <form method="post" action="/dashboard/" enctype="multipart/form-data">
+            {% csrf_token %}
+            <!-- Algoritma -->
+            <div class="section-title">Algoritma Utama</div>
+            <div class="card-wrapper">
+                <div class="card-option" data-group="algoritma" data-value="CNN"><i
+                        class="fa-solid fa-brain"></i><br>CNN</div>
+                <div class="card-option" data-group="algoritma" data-value="KMeans"><i
+                        class="fa-solid fa-chart-pie"></i><br>KMeans</div>
+                <div class="card-option" data-group="algoritma" data-value="C45"><i class="fa-solid fa-tree"></i><br>C45
+                </div>
+            </div>
+            <input type="hidden" id="algoritma-input" name="algoritma">
+
+            <!-- Kategori -->
+            <div class="section-title">Kategori Tujuan</div>
+            <div class="card-wrapper">
+                <div class="card-option" data-group="kategori" data-value="Klasifikasi"><i
+                        class="fa-solid fa-check"></i><br>Klasifikasi</div>
+                <div class="card-option" data-group="kategori" data-value="Clustering"><i
+                        class="fa-solid fa-diagram-project"></i><br>Clustering</div>
+                <div class="card-option" data-group="kategori" data-value="Association"><i
+                        class="fa-solid fa-link"></i><br>Association</div>
+            </div>
+            <input type="hidden" id="kategori-input" name="kategori">
+
+            <!-- Optimasi -->
+            <div class="section-title">Optimasi</div>
+            <div class="card-wrapper">
+                <div class="card-option" data-group="optimasi" data-value="XGBoost"><i
+                        class="fa-solid fa-bolt"></i><br>XGBoost</div>
+                <div class="card-option" data-group="optimasi" data-value="PSO"><i class="fa-solid fa-fish"></i><br>PSO
+                </div>
+                <div class="card-option" data-group="optimasi" data-value="Adaboost"><i
+                        class="fa-solid fa-layer-group"></i><br>Adaboost</div>
+            </div>
+            <input type="hidden" id="optimasi-input" name="optimasi">
+
+            <!-- Dataset -->
+            <div class="section-title">Dataset</div>
+            <div class="card-wrapper">
+                <div class="card-option" data-group="dataset" data-value="Janin"><i
+                        class="fa-solid fa-baby"></i><br>Janin</div>
+                <div class="card-option" data-group="dataset" data-value="Retina"><i
+                        class="fa-solid fa-eye"></i><br>Retina
+                </div>
+                <div class="card-option" data-group="dataset" data-value="Car-Damage"><i
+                        class="fa-solid fa-car"></i><br>Kerusakan Mobil</div>
+                <div class="card-option" data-group="dataset" data-value="Struk-Belanja"><i
+                        class="fa-solid fa-file-invoice"></i></i><br>Struk Belanja</div>
+            </div>
+            <input type="hidden" id="dataset-input" name="dataset">
+
+        </form>
+    </div>
+
+    <!-- 2. TRAINING -->
+    <div class="dashboard-section">
+        <h4>Training</h4>
+        <div class="progress mb-1" style="height:14px;">
+            <div class="progress-bar" id="training-progress" style="width:0%;">0%</div>
+        </div>
+        <small id="progress-text" class="text-muted"></small>
+        <button class="btn btn-primary btn-sm w-100" id="start-training" disabled>Start Training</button>
+        <button class="btn btn-link btn-sm w-100 mt-1 d-none" id="training-result"><i
+                class="fa-solid fa-arrow-up-right-from-square"></i> Lihat Hasil</button>
+        <!-- 5. List Models -->
+        <div class="dashboard-section mt-2">
+            <h4>Daftar Model</h4>
+            <table class="table table-bordered table-striped" id="list-models-table">
+                <thead>
+                    <tr>
+                        <th>No</th>
+                        <th>Nama Model</th>
+                        <th>Algoritma</th>
+                        <th>Dataset</th>
+                        <th>Tanggal Training</th>
+                        <th>Aksi</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td colspan="6" class="text-center">Tidak ada model</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Modal Hasil Training -->
+    <div class="modal fade" id="trainingResultModal" tabindex="-1" aria-labelledby="trainingResultLabel"
+        aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="trainingResultLabel">Hasil Training Model</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p><strong>Akurasi:</strong> <span id="result-acc">-</span></p>
+                    <p><strong>Precision:</strong> <span id="result-prec">-</span></p>
+                    <p><strong>Recall:</strong> <span id="result-rec">-</span></p>
+                    <p><strong>F1 Score:</strong> <span id="result-f1">-</span></p>
+
+                    <h6 class="mt-3">Confusion Matrix</h6>
+                    <table class="table table-bordered text-center" id="confusion-matrix"></table>
+                    <div id="pca-3d-plot" style="width:100%; height:400px;" class="mt-3"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Tutup</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 3. TESTING -->
+    <div class="dashboard-section">
+        <h4>Testing</h4>
+        <div class="progress mb-1" style="height:14px;">
+            <div class="progress-bar bg-success" id="testing-progress" style="width:0%;">0%</div>
+        </div>
+        <input type="hidden" id="selected-model" name="selected_model">
+        <input type="file" class="form-control form-control-sm mb-1" id="test-file" multiple
+            accept="image/*,video/*,audio/*" disabled>
+        <button class="btn btn-success btn-sm w-100" id="run-test" disabled>Run Test</button>
+        <button class="btn btn-link btn-sm w-100 mb-1 d-none" id="testing-result"><i
+                class="fa-solid fa-arrow-up-right-from-square"></i> Lihat Hasil</button>
+        <!-- Preview files -->
+        <div id="test-preview-container" class="d-flex flex-wrap gap-1 mt-1"></div>
+    </div>
+
+    <!-- 4. EVALUATION -->
+    <div class="dashboard-section">
+        <h4>Evaluation</h4>
+        <div class="progress mb-1" style="height:14px;">
+            <div class="progress-bar bg-warning" id="eval-progress" style="width:0%;">0%</div>
+        </div>
+        <ul>
+            <li id="eval-accuracy">Akurasi: -</li>
+            <li id="eval-loss">Loss: -</li>
+            <li>Confusion Matrix: [link]</li>
+        </ul>
+        <button class="btn btn-info btn-sm w-100" id="refresh-eval" disabled>Refresh Evaluation</button>
+        <button class="btn btn-link btn-sm w-100 mt-1 d-none" id="eval-result"><i
+                class="fa-solid fa-arrow-up-right-from-square"></i> Lihat Hasil</button>
+    </div>
+
+</div>
+
+<style>
+    #list-models-table th,
+    #list-models-table td {
+        font-size: 12px;
+        text-align: center;
+        vertical-align: middle;
+    }
+
+    .dashboard-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 6px;
+        padding: 5px;
+    }
+
+    .dashboard-section {
+        background: #fff;
+        border: 1px solid #ddd;
+        border-radius: 6px;
+        padding: 6px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    }
+
+    @media(max-width:1200px) {
+        .dashboard-grid {
+            grid-template-columns: repeat(2, 1fr);
+        }
+    }
+
+    @media(max-width:768px) {
+        .dashboard-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    .card-wrapper {
+        display: flex;
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        gap: 3px;
+    }
+
+    .card-wrapper::-webkit-scrollbar {
+        height: 5px;
+    }
+
+    .card-wrapper::-webkit-scrollbar-thumb {
+        background: #ccc;
+        border-radius: 3px;
+    }
+
+    .card-option {
+        flex: 0 0 50px;
+        height: 50px;
+        text-align: center;
+        padding: 2px;
+        border: 2px solid #ddd;
+        border-radius: 5px;
+        cursor: pointer;
+        font-size: 10px;
+        transition: all .2s;
+    }
+
+    .card-option i {
+        font-size: 12px;
+        margin-bottom: 1px;
+    }
+
+    .card-option:hover {
+        border-color: #007bff;
+        transform: scale(1.1);
+    }
+
+    .card-option.card-selected {
+        border-color: #007bff;
+        background: #e9f3ff;
+        color: #007bff;
+        font-weight: bold;
+    }
+
+    .test-preview-item {
+        position: relative;
+        width: 80px;
+        height: 80px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        overflow: hidden;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .test-preview-item button {
+        position: absolute;
+        top: 0;
+        right: 0;
+        padding: 0 4px;
+        font-size: 10px;
+    }
+
+    .test-preview-item img,
+    .test-preview-item video,
+    .test-preview-item audio {
+        max-width: 100%;
+        max-height: 100%;
+        display: block;
+    }
+</style>
+
+<script>
+    function updatePreview() {
+        const alg = document.getElementById('algoritma-input').value;
+        const kat = document.getElementById('kategori-input').value;
+        const opt = document.getElementById('optimasi-input').value;
+        const ds = document.getElementById('dataset-input').value;
+        document.getElementById('preview').textContent = [alg, kat, opt, ds].filter(v => v).join(' + ') || "Belum ada pilihan";
+        let filled = [alg, kat, opt, ds].filter(v => v).length;
+        document.getElementById('form-progress').style.width = (filled / 4 * 100) + '%';
+        const allFilled = filled === 4;
+        ['process-btn', 'start-training', 'test-file', 'run-test', 'refresh-eval'].forEach(id => document.getElementById(id).disabled = !allFilled);
+    }
+
+    // Tombol initially disabled
+    document.getElementById('start-training').disabled = true;
+    document.getElementById("process-btn").addEventListener("click", function () {
+
+        const alg = document.getElementById('algoritma-input').value;
+        const kat = document.getElementById('kategori-input').value;
+        const opt = document.getElementById('optimasi-input').value;
+        const ds = document.getElementById('dataset-input').value;
+
+        // Kombinasi valid 1
+        const validA =
+            alg === "CNN" &&
+            kat === "Klasifikasi" &&
+            opt === "XGBoost" &&
+            ds === "Retina";
+
+        // Kombinasi valid 2
+        const validB =
+            alg === "CNN" &&
+            kat === "Klasifikasi" &&
+            ds === "Retina" &&
+            (opt === "" || opt === undefined);
+
+
+        if (!(validA || validB)) {
+            alert("Kombinasi belum didukung!\n\nKombinasi valid:\n1. CNN + Klasifikasi + XGBoost + Retina\n2. CNN + Klasifikasi + Retina");
+            document.getElementById('start-training').disabled = true;
+            return;
+        }
+
+        // Jika valid → enable tombol start training
+        document.getElementById('start-training').disabled = false;
+
+        // Jalankan proses preview/cek lainnya
+        updatePreview && updatePreview();
+    });
+
+    // Card select + unselect
+    document.querySelectorAll('.card-option').forEach(card => {
+        card.addEventListener('click', function () {
+
+            const grp = this.dataset.group;
+            const hiddenInput = document.getElementById(`${grp}-input`);
+            const isSelected = this.classList.contains('card-selected');
+
+            // Jika diklik lagi dan sudah selected → unselect
+            if (isSelected) {
+                this.classList.remove('card-selected');
+                hiddenInput.value = "";
+                updatePreview();
+                return;
+            }
+
+            // Unselect semua card dalam grup
+            document.querySelectorAll(`.card-option[data-group="${grp}"]`)
+                .forEach(c => c.classList.remove('card-selected'));
+
+            // Select card ini
+            this.classList.add('card-selected');
+            hiddenInput.value = this.dataset.value;
+
+            updatePreview();
+        });
+    });
+
+
+    // Reset
+    document.getElementById('reset-btn').addEventListener('click', function () {
+        document.querySelectorAll('.card-option').forEach(c => c.classList.remove('card-selected'));
+        document.querySelectorAll('input[type=hidden]').forEach(i => i.value = '');
+        updatePreview();
+        ['form-progress', 'training-progress', 'testing-progress', 'eval-progress'].forEach(id => document.getElementById(id).style.width = '0%');
+        ['training-result', 'testing-result', 'eval-result'].forEach(id => document.getElementById(id).classList.add('d-none'));
+        document.getElementById('test-preview-container').innerHTML = '';
+        document.getElementById('test-file').value = '';
+    });
+
+
+    // Testing preview + limit
+    document.getElementById('test-file').addEventListener('change', function () {
+        const container = document.getElementById('test-preview-container'); container.innerHTML = '';
+        Array.from(this.files).forEach(file => {
+            if ((file.type.startsWith('video/') || file.type.startsWith('audio/')) && file.size > 25 * 1024 * 1024) {
+                alert('File ' + file.name + ' terlalu besar (max 25MB)'); return;
+            }
+            const item = document.createElement('div'); item.className = 'test-preview-item';
+            const btn = document.createElement('button'); btn.innerHTML = '&times;'; btn.onclick = () => item.remove(); item.appendChild(btn);
+
+            if (file.type.startsWith('image/')) {
+                const reader = new FileReader(); reader.onload = e => { const img = document.createElement('img'); img.src = e.target.result; item.appendChild(img); }; reader.readAsDataURL(file);
+            } else if (file.type.startsWith('video/')) {
+                const vid = document.createElement('video'); vid.src = URL.createObjectURL(file); vid.controls = true; item.appendChild(vid);
+            } else if (file.type.startsWith('audio/')) {
+                const aud = document.createElement('audio'); aud.src = URL.createObjectURL(file); aud.controls = true; item.appendChild(aud);
+            } else { const icon = document.createElement('i'); icon.className = 'fa-solid fa-file fa-2x'; item.appendChild(icon); }
+            container.appendChild(item);
+        });
+    });
+
+    // Run Test AJAX simulation
+    document.getElementById('run-test').addEventListener('click', function () {
+        const input = document.getElementById('test-file');
+        if (input.files.length === 0) return alert('Pilih file terlebih dahulu');
+        if (!document.getElementById("selected-model").value) return alert("Pilih model terlebih dahulu");
+
+        const btn = document.getElementById('run-test');
+        const bar = document.getElementById('testing-progress');
+        const resultBtn = document.getElementById('testing-result');
+
+        bar.style.width = '0%';
+        bar.innerText = '0%';
+        resultBtn.classList.add('d-none');
+        btn.disabled = true;
+        btn.innerText = 'Sedang testing...';
+
+        const formData = new FormData();
+        formData.append('algoritma', document.getElementById('algoritma-input').value);
+        formData.append('optimasi', document.getElementById('optimasi-input').value);
+        formData.append('dataset', document.getElementById('dataset-input').value);
+        formData.append('select-model', document.getElementById('selected-model').value);
+
+        Array.from(input.files).forEach(file => {
+            formData.append('test_file', file);
+        });
+
+        // Mulai progress simulasi
+        let width = 0;
+        const interval = setInterval(() => {
+            if (width >= 100) {
+                clearInterval(interval);
+                bar.style.width = '100%';
+                bar.innerText = '100%';
+            } else {
+                width++;
+                bar.style.width = width + '%';
+                bar.innerText = width + '%';
+            }
+        }, 20);
+
+        // AJAX ke backend
+        fetch('/dashboard/run_testing/', {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-CSRFToken': getCookie('csrftoken')
+            }
+        })
+            .then(res => res.json())
+            .then(data => {
+                clearInterval(interval);
+                bar.style.width = '100%';
+                bar.innerText = '100%';
+                btn.disabled = false;
+                btn.innerText = 'Run Test';
+
+                if (data.status === 'success') {
+                    resultBtn.classList.remove('d-none');
+                    resultBtn.innerText = 'Lihat Hasil Test';
+                    resultBtn.onclick = () => showTestingResult(data.result);
+                } else {
+                    alert(data.msg || 'Terjadi kesalahan saat testing');
+                }
+            })
+            .catch(err => {
+                clearInterval(interval);
+                btn.disabled = false;
+                btn.innerText = 'Run Test';
+                console.error('Error testing:', err);
+                alert('Gagal melakukan testing.');
+            });
+    });
+
+    // Fungsi untuk menampilkan hasil testing
+    function showTestingResult(results) {
+        let html = '<table class="table table-bordered"><tr><th>File</th><th>Prediksi</th></tr>';
+        results.forEach(r => {
+            html += `<tr><td>${r.file}</td><td>${r.prediction}</td></tr>`;
+        });
+        html += '</table>';
+
+        // Modal sementara
+        const modalBody = document.createElement('div');
+        modalBody.innerHTML = html;
+
+        const modalDiv = document.createElement('div');
+        modalDiv.className = 'modal fade';
+        modalDiv.tabIndex = -1;
+        modalDiv.innerHTML = `
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Hasil Testing</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">${modalBody.innerHTML}</div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Tutup</button>
+                </div>
+            </div>
+        </div>
+    `;
+        document.body.appendChild(modalDiv);
+        const modal = new bootstrap.Modal(modalDiv);
+        modal.show();
+
+        modalDiv.addEventListener('hidden.bs.modal', () => {
+            modalDiv.remove();
+        });
+    }
+
+    // Fungsi helper untuk CSRF
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+
+
+    // Evaluation K-Fold
+    document.getElementById('refresh-eval').addEventListener('click', function () {
+        let kfold = prompt('Masukkan jumlah K-Fold:', 5);
+        let bar = document.getElementById('eval-progress'); bar.style.width = '0%'; bar.textContent = '0%'; document.getElementById('eval-result').classList.add('d-none');
+        let width = 0; let interval = setInterval(() => {
+            if (width >= 100) {
+                clearInterval(interval); bar.textContent = '100%'; document.getElementById('eval-result').classList.remove('d-none');
+                document.getElementById('eval-accuracy').textContent = 'Akurasi: ' + (80 + Math.round(Math.random() * 20)) + '%';
+                document.getElementById('eval-loss').textContent = 'Loss: ' + (0.1 + Math.random() * 0.1).toFixed(2);
+            } else { width++; bar.style.width = width + '%'; bar.textContent = width + '%'; }
+        }, 30);
+    });
+
+    updatePreview();
+</script>
+
+<script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+
+<script>
+    let progressInterval = null;
+
+    document.getElementById("start-training").addEventListener("click", () => {
+        const btn = document.getElementById("start-training");
+        const resultBtn = document.getElementById("training-result");
+        const bar = document.getElementById("training-progress");
+        var endpointUrl = "";
+
+        bar.style.width = "0%";
+        bar.classList.remove("bg-success", "bg-danger");
+        bar.innerText = "0%";
+        resultBtn.classList.add("d-none");
+
+        btn.disabled = true;
+        btn.innerText = "Sedang training...";
+
+        const formData = new FormData();
+        formData.append("algoritma", document.getElementById("algoritma-input").value);
+        formData.append("kategori", document.getElementById("kategori-input").value);
+        formData.append("optimasi", document.getElementById("optimasi-input").value);
+        formData.append("dataset", document.getElementById("dataset-input").value);
+
+        const alg = document.getElementById('algoritma-input').value;
+        const kat = document.getElementById('kategori-input').value;
+        const opt = document.getElementById('optimasi-input').value;
+        const ds = document.getElementById('dataset-input').value;
+
+        // // Kombinasi valid 1
+        // const validA =
+        //     alg === "CNN" &&
+        //     kat === "Klasifikasi" &&
+        //     opt === "XGBoost" &&
+        //     ds === "Retina";
+
+        // // Kombinasi valid 2
+        // const validB =
+        //     alg === "CNN" &&
+        //     kat === "Klasifikasi" &&
+        //     ds === "Retina" &&
+        //     (opt === "" || opt === undefined);
+
+
+        // if ((validA)) {
+        //     endpointUrl = "/start-training-cnn-xgboost/";
+        // } else {
+        //     endpointUrl = "/start-training-cnn/"
+        // }
+
+        endpointUrl = "/start-training/"
+
+        fetch(endpointUrl, { method: "POST", body: formData })
+            .then(res => res.json())
+            .then(data => {
+                console.log(data);
+                alert(data.message || "Training dimulai!");
+                progressInterval = setInterval(updateProgressBar, 2000);
+            })
+            .catch(err => {
+                console.error("Error:", err);
+                alert("Gagal memulai training.");
+                btn.disabled = false;
+                btn.innerText = "Start Training";
+            });
+    });
+
+    function updateProgressBar() {
+        fetch("/get-progress/")
+            .then(res => res.json())
+            .then(data => {
+                const bar = document.getElementById("training-progress");
+                const btn = document.getElementById("start-training");
+                const resultBtn = document.getElementById("training-result");
+
+                const progress = Math.min(Math.max(data.progress || 0, 0), 100);
+                bar.style.width = progress + "%";
+                bar.innerText = progress + "%";
+
+                if (progress >= 100 || data.status === "done" || data.status === "error") {
+                    clearInterval(progressInterval);
+
+                    if (data.status === "done") {
+                        bar.classList.add("bg-success");
+                        resultBtn.classList.remove("d-none");
+                        resultBtn.innerText = "Lihat Hasil Training";
+                        resultBtn.onclick = () => showTrainingResult(data.metrics);
+                    } else {
+                        bar.classList.add("bg-danger");
+                    }
+
+                    btn.disabled = false;
+                    btn.innerText = "Start Training";
+                }
+            })
+            .catch(err => console.error("Error progress:", err));
+    }
+
+    function showTrainingResult() {
+        fetch("/get-results/")
+            .then(res => res.json())
+            .then(metrics => {
+                if (!metrics) return;
+
+                // Update metrik
+                document.getElementById("result-acc").innerText = metrics.accuracy || "-";
+                document.getElementById("result-prec").innerText = metrics.precision || "-";
+                document.getElementById("result-rec").innerText = metrics.recall || "-";
+                document.getElementById("result-f1").innerText = metrics.f1 || "-";
+
+                // Confusion Matrix
+                if (metrics.confusion_matrix) {
+                    const table = document.getElementById("confusion-matrix");
+                    table.innerHTML = metrics.confusion_matrix.map(row =>
+                        `<tr>${row.map(val => `<td>${val}</td>`).join('')}</tr>`
+                    ).join('');
+                }
+
+                // Plot PCA 3D jika ada data
+                if (metrics.scatter_features && metrics.scatter_features.length > 0) {
+                    const data = metrics.scatter_features;
+                    const x = data.map(p => p[0]);
+                    const y = data.map(p => p[1]);
+                    const z = data.map(p => p[2]);
+                    const label = data.map(p => p[3]);
+
+                    const trace = {
+                        x: x,
+                        y: y,
+                        z: z,
+                        mode: 'markers',
+                        marker: {
+                            size: 5,
+                            color: label,
+                            colorscale: 'Viridis',
+                            opacity: 0.8
+                        },
+                        type: 'scatter3d'
+                    };
+
+                    const layout = {
+                        margin: { l: 0, r: 0, b: 0, t: 0 },
+                        scene: {
+                            xaxis: { title: 'PCA1' },
+                            yaxis: { title: 'PCA2' },
+                            zaxis: { title: 'PCA3' }
+                        }
+                    };
+
+                    // Tambahkan div untuk plot jika belum ada
+                    if (!document.getElementById("pca-3d-plot")) {
+                        const modalBody = document.querySelector("#trainingResultModal .modal-body");
+                        const div = document.createElement("div");
+                        div.id = "pca-3d-plot";
+                        div.style.width = "100%";
+                        div.style.height = "400px";
+                        div.classList.add("mt-3");
+                        modalBody.appendChild(div);
+                    }
+
+                    Plotly.newPlot("pca-3d-plot", [trace], layout, { responsive: true });
+                }
+
+                // Tampilkan modal
+                const modal = new bootstrap.Modal(document.getElementById("trainingResultModal"));
+                modal.show();
+            })
+            .catch(err => console.error("Error fetch results:", err));
+    }
+
+    function showTrainingResultDemo() {
+        // Simulasi metrik
+        const metrics = {
+            accuracy: (80 + Math.random() * 20).toFixed(2) + "%",
+            precision: (75 + Math.random() * 20).toFixed(2) + "%",
+            recall: (70 + Math.random() * 25).toFixed(2) + "%",
+            f1: (72 + Math.random() * 23).toFixed(2) + "%",
+            confusion_matrix: [
+                [Math.floor(Math.random() * 50), Math.floor(Math.random() * 10)],
+                [Math.floor(Math.random() * 10), Math.floor(Math.random() * 50)]
+            ],
+            scatter_features: []
+        };
+
+        // Simulasi scatter_features untuk PCA 3D (50 titik per kelas)
+        const classes = 3;
+        for (let c = 0; c < classes; c++) {
+            for (let i = 0; i < 50; i++) {
+                metrics.scatter_features.push([
+                    Math.random() + c * 1.5,  // PCA1
+                    Math.random() + c * 1.5,  // PCA2
+                    Math.random() + c * 1.5,  // PCA3
+                    c                        // label
+                ]);
+            }
+        }
+
+        // Update modal
+        document.getElementById("result-acc").innerText = metrics.accuracy;
+        document.getElementById("result-prec").innerText = metrics.precision;
+        document.getElementById("result-rec").innerText = metrics.recall;
+        document.getElementById("result-f1").innerText = metrics.f1;
+
+        // Confusion matrix
+        const table = document.getElementById("confusion-matrix");
+        table.innerHTML = metrics.confusion_matrix.map(row =>
+            `<tr>${row.map(val => `<td>${val}</td>`).join('')}</tr>`
+        ).join('');
+
+        // Plot PCA 3D
+        const data = metrics.scatter_features;
+        const x = data.map(p => p[0]);
+        const y = data.map(p => p[1]);
+        const z = data.map(p => p[2]);
+        const label = data.map(p => p[3]);
+
+        const trace = {
+            x: x,
+            y: y,
+            z: z,
+            mode: 'markers',
+            marker: { size: 5, color: label, colorscale: 'Viridis', opacity: 0.8 },
+            type: 'scatter3d'
+        };
+
+        const layout = {
+            margin: { l: 0, r: 0, b: 0, t: 0 },
+            scene: {
+                xaxis: { title: "PCA1" },
+                yaxis: { title: "PCA2" },
+                zaxis: { title: "PCA3" }
+            }
+        };
+
+        Plotly.newPlot("pca-3d-plot", [trace], layout, { responsive: true });
+
+        // Tampilkan modal
+        const modal = new bootstrap.Modal(document.getElementById("trainingResultModal"));
+        modal.show();
+    }
+
+    function fetchModelsList() {
+        fetch("/list_models/")
+            .then(res => res.json())
+            .then(data => {
+                const tbody = document.querySelector("#list-models-table tbody");
+                tbody.innerHTML = "";
+
+                if (!data.models || data.models.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" class="text-center">Tidak ada model</td></tr>';
+                    return;
+                }
+
+                data.models.forEach((model, index) => {
+                    const tr = document.createElement("tr");
+                    tr.innerHTML = `
+                    <td>${index + 1}</td>
+                    <td>${model.filename || "-"}</td>
+                    <td>${model.algorithm || "-"}</td>
+                    <td>${model.dataset || "-"}</td>
+                    <td>${model.modified || "-"}</td>
+                    <td>
+                        <button class="btn btn-sm btn-info" onclick="showModelResult('${model.id}')">Lihat</button>
+                        <label class="btn btn-sm btn-info custom-radio">
+                            Pilih
+                            <input type="radio" name="selected_model" onchange="selectModel('${model.filename}|| ''}')">
+                        </label>
+                    </td>
+                `;
+                    tbody.appendChild(tr);
+                });
+            })
+            .catch(err => console.error("Error fetch models:", err));
+    }
+
+
+    // Fungsi ketika user pilih model
+    function selectModel(modelName, alg, dataset, opt) {
+        console.log("Dipilih model:", modelName);
+        const hiddenInput = document.getElementById("selected-model");
+        hiddenInput.value = modelName; // Append ke form testing
+
+        // Opsional: tampilkan preview di testing
+        const preview = document.getElementById("test-preview-container");
+        // if (preview) preview.innerHTML = `<p><strong>Model Terpilih:</strong> ${modelName} (${alg}, ${dataset}, ${opt})</p>`;
+
+        // Enable tombol Run Test jika sebelumnya disabled
+        document.getElementById("run-test").disabled = false;
+    }
+
+
+    // Download model
+    function downloadModel(url) {
+        window.open(url, "_blank");
+    }
+
+    // Lihat model (misal tampilkan modal hasil)
+    function showModelResult(modelId) {
+        // Bisa fetch /get-results/?id=modelId
+        fetch(`/get-results/?id=${modelId}`)
+            .then(res => res.json())
+            .then(metrics => {
+                showTrainingResult(metrics);
+            })
+            .catch(err => console.error("Error fetch model result:", err));
+    }
+
+    // Fetch list models saat load page
+    document.addEventListener("DOMContentLoaded", () => {
+        fetchModelsList();
+    });
+</script>
+
+<script>
+    document.querySelectorAll('input[type="radio"]').forEach(radio => {
+        radio.addEventListener('click', function () {
+            if (this.previousChecked) {
+                this.checked = false;       // unselect radio
+            }
+            this.previousChecked = this.checked;
+        });
+    });
+</script>
+
+{% endblock %}

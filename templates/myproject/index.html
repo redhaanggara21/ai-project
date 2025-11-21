@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Home</title>
+</head>
+
+<body>
+    <h1>RWP-AI</h1>
+    <ul>
+        <li><a href="{% url 'dashboard' %}">Dashboard</a></li>
+        <li><a href="{% url 'train_page' %}">Mulai Training Model XGBOOST dan CNN</a></li>
+        <li><a href="{% url 'upload_page' %}">Upload Gambar untuk Prediksi Kerusakan Bodi Mobil</a></li>
+        <li><a href="{% url 'kfold_page' %}">Kflold Cross Validation Kerusakan Bodi Mobil</a></li>
+        <li><a href="{% url 'summarizer_index' %}">Summarizer Video/Docx/PDF/Audio/Image</a></li>
+        <li><a href="{% url 'cluster_index' %}">Clustering Image</a></li>
+    </ul>
+</body>
+
+</html>

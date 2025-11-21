@@ -1,0 +1,258 @@
+.dashboard-container {
+    padding: 20px;
+}
+
+.grid-container {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 15px;
+}
+
+.card {
+    background: #fff;
+    border-radius: 10px;
+    padding: 15px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.card h3 {
+    margin-bottom: 10px;
+    font-size: 18px;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 5px;
+}
+
+.form-row {
+    display: flex;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.form-row label {
+    flex: 1;
+    font-size: 14px;
+    margin-right: 5px;
+}
+
+.form-row select,
+.form-row input,
+.form-row button {
+    flex: 2;
+    padding: 6px 8px;
+    font-size: 14px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+}
+
+.form-row button {
+    background: #007bff;
+    color: white;
+    border: none;
+    cursor: pointer;
+}
+
+.form-row button:hover {
+    background: #0056b3;
+}
+
+/* Card pilihan lebih kecil dan inline */
+.card-option {
+    flex: 0 0 110px;
+    /* lebar tetap */
+    min-height: 80px;
+    /* lebih kecil */
+    border: 2px solid #ddd;
+    border-radius: 10px;
+    text-align: center;
+    padding: 8px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: all 0.2s ease-in-out;
+    margin: 5px;
+    /* beri jarak antar card */
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+}
+
+.card-option:hover {
+    border-color: #007bff;
+    transform: scale(1.05);
+}
+
+.card-option.card-selected {
+    border-color: #007bff;
+    background: #e9f3ff;
+    color: #007bff;
+    font-weight: bold;
+}
+
+.card-option i {
+    font-size: 18px;
+    margin-bottom: 3px;
+}
+
+
+/* Flex wrapper */
+.d-flex.flex-wrap {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    /* jarak antar card */
+}
+
+/* Card pilihan inline, auto-fit */
+.d-flex.flex-wrap>.card-option {
+    flex: 1 1 140px;
+    /* minimal lebar card 140px, tapi bisa melebar */
+    max-width: 180px;
+    /* maksimal lebar card */
+    min-height: 70px;
+    /* tinggi minimal */
+    max-height: 90px;
+    /* tinggi maksimal */
+    font-size: 12px;
+    /* font lebih kecil */
+    padding: 6px;
+    /* padding compact */
+    text-align: center;
+    overflow: hidden;
+    box-sizing: border-box;
+}
+
+/* Icon lebih kecil */
+.card-option i {
+    font-size: 16px;
+    margin-bottom: 4px;
+}
+
+/* Hover effect */
+.card-option:hover {
+    border-color: #007bff;
+    transform: scale(1.05);
+}
+
+/* Card terpilih */
+.card-option.card-selected {
+    border-color: #007bff;
+    background: #e9f3ff;
+    color: #007bff;
+    font-weight: bold;
+}
+
+/* Wrapper flex */
+.d-flex.flex-wrap {
+    display: flex;
+    flex-wrap: wrap;
+    /* tetap wrap untuk layar sangat kecil */
+    gap: 2px;
+    /* jarak minimal */
+    justify-content: space-between;
+}
+
+/* Card ekstra compact */
+.d-flex.flex-wrap>.card-option {
+    flex: 1 1 auto;
+    /* menyesuaikan lebar otomatis */
+    min-width: 50px;
+    /* card bisa mengecil hingga 50px */
+    max-width: 120px;
+    /* batas maksimal */
+    height: 60px;
+    /* tinggi tetap */
+    font-size: 10px;
+    /* font sangat kecil */
+    padding: 3px;
+    /* padding compact */
+    text-align: center;
+    overflow: hidden;
+    box-sizing: border-box;
+}
+
+/* Icon lebih kecil */
+.card-option i {
+    font-size: 12px;
+    margin-bottom: 2px;
+}
+
+/* Hover effect */
+.card-option:hover {
+    border-color: #007bff;
+    transform: scale(1.05);
+}
+
+/* Card terpilih */
+.card-option.card-selected {
+    border-color: #007bff;
+    background: #e9f3ff;
+    color: #007bff;
+    font-weight: bold;
+}
+
+/* Flex wrapper untuk card */
+.d-flex.flex-wrap {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    /* jarak minimal antar card */
+}
+
+/* Card inline & fit layar */
+.card-wrapper>.card-option {
+    flex: 1 1 auto;
+    min-width: 60px;
+    /* minimal lebar card */
+    max-width: 120px;
+    /* maksimal lebar card */
+    height: 60px;
+    /* tinggi card */
+    font-size: 10px;
+    /* font compact */
+    padding: 3px;
+    /* padding compact */
+    text-align: center;
+    overflow: hidden;
+    box-sizing: border-box;
+}
+
+.card-option i {
+    font-size: 12px;
+    margin-bottom: 2px;
+}
+
+/* Hover effect */
+.card-option:hover {
+    border-color: #007bff;
+    transform: scale(1.05);
+}
+
+/* Card terpilih */
+.card-option.card-selected {
+    border-color: #007bff;
+    background: #e9f3ff;
+    color: #007bff;
+    font-weight: bold;
+}
+
+
+/* Responsif tambahan untuk mobile */
+@media (max-width: 500px) {
+    .d-flex.flex-wrap>.card-option {
+        flex: 1 1 100%;
+        /* 1 per baris untuk layar kecil */
+    }
+}
+
+/* Responsive */
+@media (max-width: 1200px) {
+    .grid-container {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
+@media (max-width: 768px) {
+    .grid-container {
+        grid-template-columns: 1fr;
+    }
+}
