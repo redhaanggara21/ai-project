@@ -3,13 +3,13 @@ from . import views
 from . import views_kfold_evaluate
 from . import views_train
 from . import views_upload
-# from .views_train import (
-#     start_training,
-#     stop_training,
-#     get_progress,
-#     download_model,
-# )
-
+from .views_training_classification import (
+    start_training_classification, 
+    get_training_progress, 
+    get_training_results,
+    run_testing,
+    run_kfold_evaluation
+)
 
 urlpatterns = [
     path('', views.home_view, name='home'),
@@ -19,6 +19,7 @@ urlpatterns = [
     path('start-training/', views_train.start_training, name='start_training'),
     # path('start-training-cnn-xgboost/', views_train.start_training, name='start_training_cnn_xgboost'),
     # path('start-training-cnn/', views_train.start_training, name='start_training_cnn'),
+   path('get-results/', views_train.get_results, name='get_results'),
     path("get-progress/", views_train.get_progress, name="get_progress"),
     path('stop-training/', views_train.stop_training, name='stop_training'),
     path('start-evaluation/', views_kfold_evaluate.start_kfold_evaluate, name='start_evaluation'),
@@ -28,5 +29,11 @@ urlpatterns = [
     path('download/<str:model_type>/', views_train.download_model, name='download_model'),
     path('kfold/', views.kfold_page, name='kfold_page'),
     path('kfold/start/', views_kfold_evaluate.start_kfold_evaluate, name='start_kfold_evaluate'),
-    path('kfold/progress/', views_kfold_evaluate.get_kfold_progress, name='get_kfold_progress')
+    path('kfold/progress/', views_kfold_evaluate.get_kfold_progress, name='get_kfold_progress'),
+    path('classifier/train/', start_training_classification, name='start_training_classification'),
+    path('classifier/get-progress/', get_training_progress, name='get_training_progress'),
+    path('classifier/get-results/', get_training_results, name='get_training_results'),
+    path('classifier/run-testing/', run_testing, name='run_testing'),
+    # Endpoint opsional jika evaluasi K-Fold ingin diproses di backend Python
+    path('classifier/run_kfold/', run_kfold_evaluation, name='run_kfold_evaluation'),
 ]

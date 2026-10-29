@@ -1,4 +1,6 @@
 
+.\.venv\Scripts\Activate.ps1
+
 # Django CNN + XGBoost Image Classifier
 
 ![Python](https://img.shields.io/badge/Python-3.11-blue)
