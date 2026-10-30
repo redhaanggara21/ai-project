@@ -1,168 +1,154 @@
+Berikut adalah file **`README.md`** lengkap, profesional, dan siap pakai untuk proyek Django CNN + XGBoost Anda:
 
-.\.venv\Scripts\Activate.ps1
-python manage.py test tests.test_unit
-python manage.py test tests
-
-# Django CNN + XGBoost Image Classifier
+```markdown
+# Django CNN + XGBoost Image Processing
 
 ![Python](https://img.shields.io/badge/Python-3.11-blue)
 ![Django](https://img.shields.io/badge/Django-4.x-green)
 ![TensorFlow](https://img.shields.io/badge/TensorFlow-2.x-orange)
 ![XGBoost](https://img.shields.io/badge/XGBoost-1.7-red)
-![Build](https://github.com/username/repo/actions/workflows/python-app.yml/badge.svg)
 ![License](https://img.shields.io/badge/License-MIT-brightgreen)
 
 ## Deskripsi
 
-Aplikasi **Django** untuk klasifikasi gambar menggunakan **CNN** + **XGBoost**.
-Fitur utama:
+Aplikasi **Django** full-stack untuk klasifikasi gambar menggunakan arsitektur hibrida **Convolutional Neural Network (CNN)** sebagai ekstraktor fitur (*feature extractor*) dan **XGBoost** sebagai pengklasifikasi akhir (*classifier*). Aplikasi ini dirancang untuk memudahkan proses pelatihan model secara asinkron, evaluasi metrik mendalam, hingga pengujian gambar secara *real-time*.
 
-* Upload gambar untuk prediksi kelas.
-* Menu training untuk melatih model CNN + XGBoost.
-* Evaluasi model: confusion matrix, ROC curve, metrik akurasi.
-* Simpan model `.h5` untuk prediksi selanjutnya.
-
-**Demo Mockup:**
-[![Demo](https://via.placeholder.com/400x200.png?text=App+Demo)](https://via.placeholder.com/800x400.png?text=Full+App+Demo)
+### Fitur Utama:
+- **Form Pilihan Dinamis**: Antarmuka berbasis kartu (*card selection*) untuk memilih kombinasi algoritma, kategori tujuan, jenis optimasi, dan dataset.
+- **Background Training**: Melatih model CNN + XGBoost di latar belakang menggunakan *threading* dengan pelacakan *progress bar* secara *real-time*.
+- **Evaluasi Model Komprehensif**: Menampilkan metrik Akurasi, *Precision*, *Recall*, *F1-Score*, dan *Confusion Matrix* multi-kelas.
+- **Pengujian Multi-File (Testing)**: Unggah beberapa gambar sekaligus dengan penanganan channel otomatis (Grayscale/RGBA ke RGB) dan pratinjau instan.
+- **Manajemen Model**: Menyimpan dan memuat kembali model hibrida menggunakan `joblib` serta mengelolanya dalam tabel daftar model aktif.
 
 ---
 
 ## Struktur Project
 
-```
+```text
 project_root/
-│
-├── classifier/
-│   ├── templates/
-│   │   ├── upload.html
-│   │   └── results.html
-│   ├── views.py
-│   ├── urls.py
-│   └── models/           # Simpan model .h5
-├── media/                # File upload
-├── static/               # CSS/JS
-├── db.sqlite3
-├── manage.py
+├── dataset/                  # Folder dataset (train/val per kelas)
+├── models/                   # Direktori penyimpanan file model (.pkl)
+├── classifier/               # Aplikasi utama Django
+│   ├── templates/            # Template HTML dashboard & modal
+│   ├── views.py              # Logika training, testing, dan evaluasi
+│   ├── urls.py               # Konfigurasi routing URL
+│   └── ...
+├── media/                    # File unggahan pengguna
+├── static/                   # Aset statis (CSS/JS)
+├── db.sqlite3                # Database SQLite
+├── manage.py                 # Utilitas baris perintah Django
 └── README.md
+
 ```
 
 ---
 
-## Persyaratan
+## Persyaratan Sistem
 
-* Python 3.11+
-* Django 4.x
-* TensorFlow 2.x
-* XGBoost
-* scikit-learn
-* matplotlib, seaborn, pandas, numpy
-* Pillow
+* **Python** 3.11+
+* **Django** 4.x
+* **TensorFlow** 2.x
+* **XGBoost** & **scikit-learn**
+* **Joblib**, **NumPy**, **Pillow**, & **Plotly** (untuk visualisasi fitur)
 
-Install dependencies:
+---
 
+## Instalasi & Konfigurasi
+
+1. **Clone repository & masuk ke direktori project:**
+```bash
+cd project_root
+
+```
+
+
+2. **Aktifkan Virtual Environment:**
+* **Windows (PowerShell):**
+```powershell
+.\.venv\Scripts\Activate.ps1
+
+```
+
+
+* **Linux / macOS:**
+```bash
+source .venv/bin/activate
+
+```
+
+
+
+
+3. **Install Dependencies:**
 ```bash
 pip install -r requirements.txt
+
 ```
 
----
 
-## Cara Menjalankan
-
-1. **Migrasi database:**
-
+4. **Migrasi Database:**
 ```bash
 python manage.py makemigrations
 python manage.py migrate
-python manage.py test
+
 ```
 
-2. **Jalankan server:**
 
+
+---
+
+## Cara Menjalankan Aplikasi
+
+1. **Jalankan Server Django:**
 ```bash
 python manage.py runserver
+
 ```
 
-3. **Akses aplikasi:**
-   `http://127.0.0.1:8000/`
+
+2. **Akses Aplikasi melalui Browser:**
+Buka tautan berikut di browser Anda:
+`http://127.0.0.1:8000/`
+3. **(Opsional) Jalankan Celery Worker:**
+Jika Anda menggunakan antrean tugas latar belakang berbasis Celery:
+```bash
+celery -A myproject worker -l info
+
+```
+
+
 
 ---
 
-## Fitur & Alur
+## Panduan Pengujian (Testing)
 
-### 1. Menu Training
+Untuk menjalankan rangkaian unit test pada Django, gunakan perintah berikut:
 
-* Latih model CNN + XGBoost dari dataset kecil.
-* Evaluasi model:
+```bash
+# Menjalankan seluruh test
+python manage.py test
 
-| Metrik    | Nilai Contoh |
-| --------- | ------------ |
-| Accuracy  | 0.92         |
-| Precision | 0.90         |
-| Recall    | 0.91         |
-| F1-score  | 0.905        |
+# Menjalankan test spesifik pada modul tertentu
+python manage.py test tests
+python manage.py test tests.test_unit
 
-**Mockup tampilan training:**
-
-![Training Mockup](https://via.placeholder.com/600x300.png?text=Training+Progress+%26+Confusion+Matrix)
-![ROC Curve Mockup](https://via.placeholder.com/600x300.png?text=ROC+Curve)
+```
 
 ---
 
-### 2. Menu Upload / Prediksi
+## Alur Penggunaan Fitur
 
-* Upload gambar untuk diuji.
-* Prediksi kelas menggunakan model yang sudah dilatih.
-
-**Mockup tampilan upload & hasil prediksi:**
-
-![Upload Mockup](https://via.placeholder.com/600x300.png?text=Upload+Form)
-![Prediksi Mockup](https://via.placeholder.com/600x300.png?text=Prediksi+Hasil)
-
-**Hasil prediksi contoh:**
-
-| Gambar      | Prediksi        | Confidence |
-| ----------- | --------------- | ---------- |
-| car\_01.jpg | Moderate Damage | 92%        |
-| car\_02.jpg | Minor Damage    | 88%        |
-
----
-
-### 3. Preview Model Interaktif
-
-Gunakan [Google Colab](https://colab.research.google.com/) untuk preview model `.h5` interaktif:
-
-[![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/your_colab_link_here)
-
----
-
-### 4. Download Model `.h5`
-
-Download model CNN + XGBoost hasil training:
-[Download Model](https://example.com/path/to/your_model.h5) *(ganti dengan link asli)*
-
----
-
-## Catatan
-
-* Pastikan folder `media/` writable.
-* Dataset training dapat disesuaikan jumlah kelas.
-* Model `.h5` disimpan di `classifier/models/`.
-* Model dapat digunakan berkali-kali tanpa retraining.
+1. **Form Pilihan**: Pilih Algoritma (`CNN`), Kategori (`Klasifikasi`), Optimasi (`XGBoost`), dan Dataset yang diinginkan.
+2. **Training**: Klik tombol *Start Training*. Pantau progress pelatihan secara langsung. Setelah selesai, klik *Lihat Hasil* untuk memunculkan modal metrik evaluasi dan *Confusion Matrix*.
+3. **Daftar Model**: Model yang berhasil dilatih akan otomatis masuk ke dalam tabel daftar model. Pilih model yang ingin diuji menggunakan tombol radio.
+4. **Testing**: Unggah file gambar pada bagian testing, lalu klik *Run Test* untuk melihat hasil prediksi label kelas secara instan.
 
 ---
 
 ## Lisensi
 
-MIT License © 2025
+MIT License © 2026
 
----
+```
 
-Kalau mau, aku bisa buatkan **file `python-app.yml` GitHub Actions** juga, supaya setiap push otomatis melakukan:
-
-* Cek dependencies
-* Run test prediksi sample
-* Badge Build Update otomatis
-
-Apakah mau aku buatkan file GitHub Actions itu juga?
-
-celery -A myproject worker -l info
+```

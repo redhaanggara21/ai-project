@@ -540,18 +540,6 @@
     }
 
 
-    // Evaluation K-Fold
-    document.getElementById('refresh-eval').addEventListener('click', function () {
-        let kfold = prompt('Masukkan jumlah K-Fold:', 5);
-        let bar = document.getElementById('eval-progress'); bar.style.width = '0%'; bar.textContent = '0%'; document.getElementById('eval-result').classList.add('d-none');
-        let width = 0; let interval = setInterval(() => {
-            if (width >= 100) {
-                clearInterval(interval); bar.textContent = '100%'; document.getElementById('eval-result').classList.remove('d-none');
-                document.getElementById('eval-accuracy').textContent = 'Akurasi: ' + (80 + Math.round(Math.random() * 20)) + '%';
-                document.getElementById('eval-loss').textContent = 'Loss: ' + (0.1 + Math.random() * 0.1).toFixed(2);
-            } else { width++; bar.style.width = width + '%'; bar.textContent = width + '%'; }
-        }, 30);
-    });
 
     updatePreview();
 </script>
