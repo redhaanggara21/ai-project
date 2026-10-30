@@ -125,50 +125,66 @@ def start_training_classification(request):
 
                 update_progress(epoch + 1, total_epochs, loss_val, acc_val)
 
-            # Evaluasi metrik validasi
-            val_preds = cnn_model.predict(val_cached, verbose=0)
-            y_pred = np.argmax(val_preds, axis=1)
+            # Ground truth validasi
             y_true = np.concatenate([y.numpy() for _, y in val_cached], axis=0)
 
-            precision = precision_score(y_true, y_pred, average='macro', zero_division=0)
-            recall = recall_score(y_true, y_pred, average='macro', zero_division=0)
-            f1 = f1_score(y_true, y_pred, average='macro', zero_division=0)
-            cm = confusion_matrix(y_true, y_pred, labels=list(range(len(class_names))))
-
-            training_status["metrics"] = {
-                "precision": round(float(precision), 4),
-                "recall": round(float(recall), 4),
-                "f1": round(float(f1), 4),
-                "confusion_matrix": cm.tolist(),
-                "class_labels": class_names
-            }
-
-            # Pelatihan Hybrid XGBoost dengan Embedding CNN
+            # Cek apakah menggunakan Hybrid XGBoost atau CNN murni
             if optimasi.lower() == "xgboost" or not optimasi:
+                # Ekstraksi fitur embedding Training
                 all_embeddings, all_labels = [], []
                 for imgs_batch, lbls_batch in train_ds:
                     emb = embedding_model.predict(imgs_batch, verbose=0)
                     all_embeddings.append(emb)
                     all_labels.extend(lbls_batch.numpy().tolist())
 
-                if all_embeddings:
-                    X_emb = np.vstack(all_embeddings)
-                    y_emb = np.array(all_labels)
+                X_emb = np.vstack(all_embeddings)
+                y_emb = np.array(all_labels)
 
-                    xgb_model = xgb.XGBClassifier(n_estimators=100, max_depth=5, learning_rate=0.05, eval_metric='mlogloss')
-                    xgb_model.fit(X_emb, y_emb)
-                    
-                    algo_str = algoritma.lower()
-                    opt_str = optimasi.lower()
-                    model_filename = f"{algo_str}_{opt_str}_{ds_name}.pkl"
-                    model_path = os.path.join(MODEL_DIR, model_filename)
+                xgb_model = xgb.XGBClassifier(n_estimators=100, max_depth=5, learning_rate=0.05, eval_metric='mlogloss')
+                xgb_model.fit(X_emb, y_emb)
+                
+                # Ekstraksi fitur embedding Validasi untuk evaluasi XGBoost
+                val_embeddings = []
+                for imgs_batch, _ in val_ds:
+                    emb_val = embedding_model.predict(imgs_batch, verbose=0)
+                    val_embeddings.append(emb_val)
+                X_val_emb = np.vstack(val_embeddings)
 
-                    model_bundle = {
-                        "model": xgb_model,
-                        "class_names": class_names
-                    }
-                    joblib.dump(model_bundle, model_path)
-                    print(f"✅ Model berhasil disimpan di: {model_path}")
+                y_pred = xgb_model.predict(X_val_emb)
+
+                # Simpan model bundle
+                algo_str = algoritma.lower()
+                opt_str = optimasi.lower()
+                model_filename = f"{algo_str}_{opt_str}_{ds_name}.pkl"
+                model_path = os.path.join(MODEL_DIR, model_filename)
+
+                model_bundle = {
+                    "model": xgb_model,
+                    "class_names": class_names
+                }
+                joblib.dump(model_bundle, model_path)
+            else:
+                val_preds = cnn_model.predict(val_cached, verbose=0)
+                y_pred = np.argmax(val_preds, axis=1)
+
+            # Hitung Metrik Evaluasi
+            acc = accuracy_score(y_true, y_pred)
+            precision = precision_score(y_true, y_pred, average='macro', zero_division=0)
+            recall = recall_score(y_true, y_pred, average='macro', zero_division=0)
+            f1 = f1_score(y_true, y_pred, average='macro', zero_division=0)
+            cm = confusion_matrix(y_true, y_pred, labels=list(range(len(class_names))))
+
+            training_status["accuracy"] = float(acc)
+            training_status["metrics"] = {
+                "accuracy": round(float(acc) * 100, 2),
+                "akurasi": f"{round(float(acc) * 100, 2)}%",
+                "precision": round(float(precision), 4),
+                "recall": round(float(recall), 4),
+                "f1": round(float(f1), 4),
+                "f1_score": round(float(f1), 4),
+                "confusion_matrix": cm.tolist(),
+                "class_labels": class_names
+            }
 
             training_status["status"] = "done"
 
@@ -183,14 +199,33 @@ def start_training_classification(request):
     return JsonResponse({"status": "success", "message": "Proses training model berhasil dimulai!"})
 
 
+@csrf_exempt
+def get_training_results(request):
+    metrics = training_status.get("metrics", {}).copy()
+    
+    # Format persentase untuk akurasi
+    acc_val = training_status.get('accuracy', 0.0) * 100
+    if "accuracy" not in metrics or not str(metrics["accuracy"]).endswith("%"):
+        metrics["accuracy"] = f"{round(acc_val, 2)}%"
+    metrics["akurasi"] = metrics["accuracy"]
+    
+    # Pastikan key standar tersedia
+    metrics.setdefault("precision", "-")
+    metrics.setdefault("recall", "-")
+    metrics.setdefault("f1", "-")
+    metrics.setdefault("f1_score", metrics.get("f1", "-"))
+    metrics.setdefault("confusion_matrix", [])
+    
+    return JsonResponse(metrics)
+
 def get_training_progress(request):
     return JsonResponse(training_status)
 
 
-def get_training_results(request):
-    metrics = training_status.get("metrics", {})
-    metrics["accuracy"] = f"{round(training_status.get('accuracy', 0) * 100, 2)}%"
-    return JsonResponse(metrics)
+# def get_training_results(request):
+#     metrics = training_status.get("metrics", {})
+#     metrics["accuracy"] = f"{round(training_status.get('accuracy', 0) * 100, 2)}%"
+#     return JsonResponse(metrics)
 
 
 @csrf_exempt

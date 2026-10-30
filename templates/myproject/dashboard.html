@@ -80,10 +80,12 @@
         <div class="progress mb-1" style="height:14px;">
             <div class="progress-bar" id="training-progress" style="width:0%;">0%</div>
         </div>
-        <small id="progress-text" class="text-muted"></small>
+        <!-- Diperbarui: ID progress-text diaktifkan agar menampilkan detail epoch/status training -->
+        <small id="progress-text" class="text-muted d-block mb-2">Status: Menunggu proses...</small>
         <button class="btn btn-primary btn-sm w-100" id="start-training" disabled>Start Training</button>
         <button class="btn btn-link btn-sm w-100 mt-1 d-none" id="training-result"><i
                 class="fa-solid fa-arrow-up-right-from-square"></i> Lihat Hasil</button>
+        
         <!-- 5. List Models -->
         <div class="dashboard-section mt-2">
             <h4>Daftar Model</h4>
@@ -100,6 +102,7 @@
                 </thead>
                 <tbody>
                     <tr>
+                        <!-- Diperbarui colspan menjadi 6 agar pas dengan jumlah kolom header -->
                         <td colspan="6" class="text-center">Tidak ada model</td>
                     </tr>
                 </tbody>
@@ -123,7 +126,11 @@
                     <p><strong>F1 Score:</strong> <span id="result-f1">-</span></p>
 
                     <h6 class="mt-3">Confusion Matrix</h6>
-                    <table class="table table-bordered text-center" id="confusion-matrix"></table>
+                    <div class="table-responsive">
+                        <table class="table table-bordered text-center" id="confusion-matrix">
+                            <tr><td class="text-muted">-</td></tr>
+                        </table>
+                    </div>
                     <div id="pca-3d-plot" style="width:100%; height:400px;" class="mt-3"></div>
                 </div>
                 <div class="modal-footer">
@@ -640,27 +647,29 @@
     }
 
     function showTrainingResult() {
-        // Menggunakan tag url Django untuk get-results
+        // Menggunakan endpoint get_training_results
         fetch("{% url 'get_training_results' %}")
             .then(res => res.json())
             .then(metrics => {
                 if (!metrics) return;
 
-                // Update metrik
-                document.getElementById("result-acc").innerText = metrics.accuracy || "-";
-                document.getElementById("result-prec").innerText = metrics.precision || "-";
-                document.getElementById("result-rec").innerText = metrics.recall || "-";
-                document.getElementById("result-f1").innerText = metrics.f1 || "-";
+                // Mengisi elemen teks metrik dengan fallback aman
+                document.getElementById("result-acc").innerText = metrics.accuracy || metrics.akurasi || "-";
+                document.getElementById("result-prec").innerText = metrics.precision !== undefined ? metrics.precision : "-";
+                document.getElementById("result-rec").innerText = metrics.recall !== undefined ? metrics.recall : "-";
+                document.getElementById("result-f1").innerText = metrics.f1 || metrics.f1_score || "-";
 
-                // Confusion Matrix
-                if (metrics.confusion_matrix) {
-                    const table = document.getElementById("confusion-matrix");
+                // Render Confusion Matrix ke dalam tabel
+                const table = document.getElementById("confusion-matrix");
+                if (metrics.confusion_matrix && Array.isArray(metrics.confusion_matrix) && metrics.confusion_matrix.length > 0) {
                     table.innerHTML = metrics.confusion_matrix.map(row =>
                         `<tr>${row.map(val => `<td>${val}</td>`).join('')}</tr>`
                     ).join('');
+                } else {
+                    table.innerHTML = '<tr><td class="text-center text-muted">Confusion matrix tidak tersedia</td></tr>';
                 }
 
-                // Plot PCA 3D jika ada data
+                // Render Plot PCA 3D jika ada data scatter_features
                 if (metrics.scatter_features && metrics.scatter_features.length > 0) {
                     const data = metrics.scatter_features;
                     const x = data.map(p => p[0]);
@@ -669,9 +678,7 @@
                     const label = data.map(p => p[3]);
 
                     const trace = {
-                        x: x,
-                        y: y,
-                        z: z,
+                        x: x, y: y, z: z,
                         mode: 'markers',
                         marker: {
                             size: 5,
@@ -691,7 +698,6 @@
                         }
                     };
 
-                    // Tambahkan div untuk plot jika belum ada
                     if (!document.getElementById("pca-3d-plot")) {
                         const modalBody = document.querySelector("#trainingResultModal .modal-body");
                         const div = document.createElement("div");
@@ -705,13 +711,14 @@
                     Plotly.newPlot("pca-3d-plot", [trace], layout, { responsive: true });
                 }
 
-                // Tampilkan modal
-                const modal = new bootstrap.Modal(document.getElementById("trainingResultModal"));
+                // Tampilkan Modal Bootstrap
+                const modalElement = document.getElementById("trainingResultModal");
+                const modal = bootstrap.Modal.getOrCreateInstance(modalElement);
                 modal.show();
             })
             .catch(err => console.error("Error fetch results:", err));
     }
-
+    
     function fetchModelsList() {
         fetch("/list_models/")
             .then(res => res.json())
