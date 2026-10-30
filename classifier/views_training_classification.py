@@ -163,10 +163,18 @@ def start_training_classification(request):
                     xgb_model = xgb.XGBClassifier(n_estimators=100, max_depth=5, learning_rate=0.05, eval_metric='mlogloss')
                     xgb_model.fit(X_emb, y_emb)
                     
-                    # Format penamaan file .pkl otomatis berdasarkan pilihan (misal: cnn_xgboost_retina.pkl)
-                    model_filename = f"cnn_xgboost_{ds_name}.pkl"
+                    # Dinamis berdasarkan pilihan user (misal: cnn_xgboost_retina.pkl)
+                    algo_str = algoritma.lower()
+                    opt_str = optimasi.lower()
+                    model_filename = f"{algo_str}_{opt_str}_{ds_name}.pkl"
                     model_path = os.path.join(MODEL_DIR, model_filename)
-                    joblib.dump(xgb_model, model_path)
+
+                    # Simpan model beserta class_names agar testing dapat membaca nama kelas asli
+                    model_bundle = {
+                        "model": xgb_model,
+                        "class_names": class_names
+                    }
+                    joblib.dump(model_bundle, model_path)
                     print(f"✅ Model berhasil disimpan di: {model_path}")
 
             training_status["status"] = "done"
@@ -194,6 +202,7 @@ def get_training_results(request):
     metrics["accuracy"] = f"{round(training_status.get('accuracy', 0) * 100, 2)}%"
     return JsonResponse(metrics)
 
+
 @csrf_exempt
 def run_testing(request):
     if request.method != "POST":
@@ -209,8 +218,15 @@ def run_testing(request):
         if not os.path.exists(model_path):
             return JsonResponse({"status": "error", "msg": f"File model {model_filename} tidak ditemukan."})
 
-        # 2. Load model XGBoost (atau model machine learning lainnya)
-        model = joblib.load(model_path)
+        # 2. Load model bundle (berisi dictionary model dan class_names)
+        saved_bundle = joblib.load(model_path)
+        if isinstance(saved_bundle, dict):
+            model = saved_bundle["model"]
+            class_names = saved_bundle.get("class_names", [])
+        else:
+            # Fallback backward compatibility jika model format lama
+            model = saved_bundle
+            class_names = []
 
         # 3. Ambil multiple files
         uploaded_files = request.FILES.getlist("test_file")
@@ -244,16 +260,22 @@ def run_testing(request):
 
                 # Prediksi menggunakan model Machine Learning (XGBoost)
                 prediction = model.predict(features)
-                predicted_class = str(prediction[0])
+                pred_idx = int(prediction[0])
+
+                # Petakan indeks prediksi ke nama kelas asli jika tersedia
+                if class_names and pred_idx < len(class_names):
+                    predicted_label = class_names[pred_idx]
+                else:
+                    predicted_label = str(pred_idx)
 
                 results.append({
                     "file": f.name,
-                    "prediction": f"Kelas {predicted_class}"
+                    "prediction": f"{predicted_label}"
                 })
             except Exception as img_err:
                 results.append({
                     "file": f.name,
-                    "prediction": f"Error: keterbatasan format file"
+                    "prediction": "Error: format file tidak didukung"
                 })
 
         return JsonResponse({"status": "success", "result": results})
@@ -269,9 +291,6 @@ def run_kfold_evaluation(request):
     
     try:
         k_value = int(request.POST.get("k_fold", 5))
-        # Anda bisa menyisipkan logika K-Fold pada X_emb dan y_emb di sini
-        # Contoh mockup response JSON data K-Fold:
-        folds_result = []
         kf = KFold(n_splits=k_value, shuffle=True, random_state=42)
         
         # Simulasi output hasil iterasi fold

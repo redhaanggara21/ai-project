@@ -1,5 +1,7 @@
 
 .\.venv\Scripts\Activate.ps1
+python manage.py test tests.test_unit
+python manage.py test tests
 
 # Django CNN + XGBoost Image Classifier
 
