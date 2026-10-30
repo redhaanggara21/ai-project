@@ -43,10 +43,6 @@ def update_progress(epoch, total, loss, acc):
 
 @csrf_exempt
 def start_training_classification(request):
-    """
-    View khusus untuk menangani tombol 'Start Training' dari frontend dashboard.
-    Menerima parameter: algoritma, kategori, optimasi, dan dataset.
-    """
     global stop_training_flag, training_status
 
     if request.method != "POST":
@@ -55,7 +51,6 @@ def start_training_classification(request):
     if training_status["status"] == "training":
         return JsonResponse({"status": "warning", "message": "Training lain sedang berjalan!"})
 
-    # Menangkap data yang dikirim dari form dashboard (card selection)
     algoritma = request.POST.get("algoritma", "CNN")
     kategori = request.POST.get("kategori", "Klasifikasi")
     optimasi = request.POST.get("optimasi", "XGBoost")
@@ -70,22 +65,20 @@ def start_training_classification(request):
         "metrics": {}
     })
 
-    # Tentukan direktori dataset berdasarkan pilihan user di UI
     ds_name = dataset.lower().replace(" ", "_")
     train_dir = os.path.join(settings.BASE_DIR, "dataset", ds_name, "train")
     val_dir = os.path.join(settings.BASE_DIR, "dataset", ds_name, "val")
 
-    MODEL_DIR = os.path.join(settings.BASE_DIR, "saved_models")
+    MODEL_DIR = os.path.join(settings.BASE_DIR, "models")
     os.makedirs(MODEL_DIR, exist_ok=True)
 
     def train_background_worker():
         global training_status, stop_training_flag
         try:
-            # Validasi direktori dataset fisik
             if not os.path.exists(train_dir) or not os.path.exists(val_dir):
                 raise ValueError(f"Folder dataset 'train' atau 'val' tidak ditemukan di path: dataset/{ds_name}/")
 
-            img_size = (224, 224)  # Standar resolusi 224x224
+            img_size = (224, 224)
             batch_size = 32
             total_epochs = 3
 
@@ -99,24 +92,28 @@ def start_training_classification(request):
 
             class_names = train_ds.class_names
 
-            # Membangun Arsitektur CNN sebagai Ekstraktor Fitur
-            cnn_model = tf.keras.Sequential([
-                tf.keras.layers.Rescaling(1.0 / 255, input_shape=(img_size[0], img_size[1], 3)),
-                tf.keras.layers.Conv2D(32, 3, activation='relu'),
-                tf.keras.layers.MaxPooling2D(),
-                tf.keras.layers.Conv2D(64, 3, activation='relu'),
-                tf.keras.layers.MaxPooling2D(),
-                tf.keras.layers.Flatten(name="flatten_layer"),
-                tf.keras.layers.Dense(128, activation='relu'),
-                tf.keras.layers.Dense(len(class_names), activation='softmax')
-            ])
+            # Arsitektur CNN menggunakan Functional API
+            inputs = tf.keras.Input(shape=(img_size[0], img_size[1], 3))
+            x = tf.keras.layers.Rescaling(1.0 / 255)(inputs)
+            x = tf.keras.layers.Conv2D(32, 3, activation='relu')(x)
+            x = tf.keras.layers.MaxPooling2D()(x)
+            x = tf.keras.layers.Conv2D(64, 3, activation='relu')(x)
+            x = tf.keras.layers.MaxPooling2D()(x)
+            
+            flatten_out = tf.keras.layers.Flatten(name="flatten_layer")(x)
+            
+            x_dense = tf.keras.layers.Dense(128, activation='relu')(flatten_out)
+            outputs = tf.keras.layers.Dense(len(class_names), activation='softmax')(x_dense)
+
+            cnn_model = Model(inputs=inputs, outputs=outputs)
+            embedding_model = Model(inputs=inputs, outputs=flatten_out)
 
             cnn_model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
             AUTOTUNE = tf.data.AUTOTUNE
             train_cached = train_ds.prefetch(AUTOTUNE)
             val_cached = val_ds.prefetch(AUTOTUNE)
 
-            # Training Loop per Epoch
+            # Training Loop
             for epoch in range(total_epochs):
                 if stop_training_flag:
                     training_status["status"] = "stopped"
@@ -128,7 +125,7 @@ def start_training_classification(request):
 
                 update_progress(epoch + 1, total_epochs, loss_val, acc_val)
 
-            # Evaluasi metrik akhir pada data validation
+            # Evaluasi metrik validasi
             val_preds = cnn_model.predict(val_cached, verbose=0)
             y_pred = np.argmax(val_preds, axis=1)
             y_true = np.concatenate([y.numpy() for _, y in val_cached], axis=0)
@@ -146,10 +143,8 @@ def start_training_classification(request):
                 "class_labels": class_names
             }
 
-            # Training Model Hybrid XGBoost menggunakan Embedding dari CNN
+            # Pelatihan Hybrid XGBoost dengan Embedding CNN
             if optimasi.lower() == "xgboost" or not optimasi:
-                embedding_model = Model(inputs=cnn_model.input, outputs=cnn_model.get_layer("flatten_layer").output)
-                
                 all_embeddings, all_labels = [], []
                 for imgs_batch, lbls_batch in train_ds:
                     emb = embedding_model.predict(imgs_batch, verbose=0)
@@ -163,13 +158,11 @@ def start_training_classification(request):
                     xgb_model = xgb.XGBClassifier(n_estimators=100, max_depth=5, learning_rate=0.05, eval_metric='mlogloss')
                     xgb_model.fit(X_emb, y_emb)
                     
-                    # Dinamis berdasarkan pilihan user (misal: cnn_xgboost_retina.pkl)
                     algo_str = algoritma.lower()
                     opt_str = optimasi.lower()
                     model_filename = f"{algo_str}_{opt_str}_{ds_name}.pkl"
                     model_path = os.path.join(MODEL_DIR, model_filename)
 
-                    # Simpan model beserta class_names agar testing dapat membaca nama kelas asli
                     model_bundle = {
                         "model": xgb_model,
                         "class_names": class_names
@@ -184,7 +177,6 @@ def start_training_classification(request):
             training_status["metrics"]["error"] = str(e)
             traceback.print_exc()
 
-    # Jalankan background thread agar UI dashboard tidak mengalami lagging/freeze
     t = threading.Thread(target=train_background_worker, daemon=True)
     t.start()
 
@@ -192,12 +184,10 @@ def start_training_classification(request):
 
 
 def get_training_progress(request):
-    """View untuk polling status progres progress-bar di frontend."""
     return JsonResponse(training_status)
 
 
 def get_training_results(request):
-    """View untuk mengambil ringkasan metrik evaluasi setelah training selesai."""
     metrics = training_status.get("metrics", {})
     metrics["accuracy"] = f"{round(training_status.get('accuracy', 0) * 100, 2)}%"
     return JsonResponse(metrics)
@@ -209,73 +199,80 @@ def run_testing(request):
         return JsonResponse({"status": "error", "msg": "Method tidak diizinkan!"}, status=405)
 
     try:
-        # 1. Ambil nama model yang dipilih dari frontend
         model_filename = request.POST.get("select-model")
         if not model_filename:
             return JsonResponse({"status": "error", "msg": "Belum ada model yang dipilih!"})
 
-        model_path = os.path.join(settings.BASE_DIR, "saved_models", model_filename)
+        model_path = os.path.join(settings.BASE_DIR, "models", model_filename)
         if not os.path.exists(model_path):
             return JsonResponse({"status": "error", "msg": f"File model {model_filename} tidak ditemukan."})
 
-        # 2. Load model bundle (berisi dictionary model dan class_names)
         saved_bundle = joblib.load(model_path)
         if isinstance(saved_bundle, dict):
             model = saved_bundle["model"]
             class_names = saved_bundle.get("class_names", [])
         else:
-            # Fallback backward compatibility jika model format lama
             model = saved_bundle
             class_names = []
 
-        # 3. Ambil multiple files
         uploaded_files = request.FILES.getlist("test_file")
         if not uploaded_files:
             return JsonResponse({"status": "error", "msg": "Tidak ada file gambar yang diunggah."})
 
-        # 4. Rekonstruksi arsitektur CNN untuk ekstraksi fitur (samakan dengan saat training)
         img_size = (224, 224)
-        base_cnn = tf.keras.Sequential([
-            tf.keras.layers.Rescaling(1.0 / 255, input_shape=(img_size[0], img_size[1], 3)),
-            tf.keras.layers.Conv2D(32, 3, activation='relu'),
-            tf.keras.layers.MaxPooling2D(),
-            tf.keras.layers.Conv2D(64, 3, activation='relu'),
-            tf.keras.layers.MaxPooling2D(),
-            tf.keras.layers.Flatten(name="flatten_layer"),
-            tf.keras.layers.Dense(128, activation='relu'),
-        ])
-        embedding_model = Model(inputs=base_cnn.input, outputs=base_cnn.get_layer("flatten_layer").output)
+        inputs = tf.keras.Input(shape=(img_size[0], img_size[1], 3))
+        x = tf.keras.layers.Rescaling(1.0 / 255)(inputs)
+        x = tf.keras.layers.Conv2D(32, 3, activation='relu')(x)
+        x = tf.keras.layers.MaxPooling2D()(x)
+        x = tf.keras.layers.Conv2D(64, 3, activation='relu')(x)
+        x = tf.keras.layers.MaxPooling2D()(x)
+        flatten_out = tf.keras.layers.Flatten(name="flatten_layer")(x)
+        x_dense = tf.keras.layers.Dense(128, activation='relu')(flatten_out)
+        
+        embedding_model = Model(inputs=inputs, outputs=flatten_out)
 
         results = []
         for f in uploaded_files:
             try:
-                # Baca dan resize gambar ke (224, 224, 3)
                 image_bytes = f.read()
-                img = tf.image.decode_image(image_bytes, channels=3, expand_animations=False)
-                img = tf.image.resize(img, img_size)
-                img_array = tf.expand_dims(img, 0)
+                if not image_bytes:
+                    raise ValueError("File gambar kosong.")
 
-                # Ekstraksi fitur menggunakan CNN
+                # Decode gambar secara fleksibel
+                img_tensor = tf.image.decode_image(image_bytes, expand_animations=False)
+                
+                # Penanganan channel (Grayscale / RGBA ke RGB)
+                if len(img_tensor.shape) == 2:
+                    img_tensor = tf.expand_dims(img_tensor, -1)
+                
+                if img_tensor.shape[-1] == 1:
+                    img_tensor = tf.image.grayscale_to_rgb(img_tensor)
+                elif img_tensor.shape[-1] > 3:
+                    img_tensor = img_tensor[..., :3]
+
+                img_tensor.set_shape([None, None, 3])
+                img_tensor = tf.image.resize(img_tensor, img_size)
+                
+                img_array = tf.expand_dims(img_tensor, 0)
                 features = embedding_model.predict(img_array, verbose=0)
 
-                # Prediksi menggunakan model Machine Learning (XGBoost)
                 prediction = model.predict(features)
                 pred_idx = int(prediction[0])
 
-                # Petakan indeks prediksi ke nama kelas asli jika tersedia
                 if class_names and pred_idx < len(class_names):
                     predicted_label = class_names[pred_idx]
                 else:
-                    predicted_label = str(pred_idx)
+                    predicted_label = f"Kelas {pred_idx}"
 
                 results.append({
                     "file": f.name,
-                    "prediction": f"{predicted_label}"
+                    "prediction": predicted_label
                 })
             except Exception as img_err:
+                print(f"❌ Error processing image {f.name}: {str(img_err)}")
                 results.append({
                     "file": f.name,
-                    "prediction": "Error: format file tidak didukung"
+                    "prediction": f"Error: {str(img_err)}"
                 })
 
         return JsonResponse({"status": "success", "result": results})
@@ -293,7 +290,6 @@ def run_kfold_evaluation(request):
         k_value = int(request.POST.get("k_fold", 5))
         kf = KFold(n_splits=k_value, shuffle=True, random_state=42)
         
-        # Simulasi output hasil iterasi fold
         scores = [{"fold": i+1, "accuracy": round(85.5 + i, 2)} for i in range(k_value)]
         
         return JsonResponse({
