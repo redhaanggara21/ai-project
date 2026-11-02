@@ -80,8 +80,6 @@
         <div class="progress mb-1" style="height:14px;">
             <div class="progress-bar" id="training-progress" style="width:0%;">0%</div>
         </div>
-        <!-- Diperbarui: ID progress-text diaktifkan agar menampilkan detail epoch/status training -->
-        <small id="progress-text" class="text-muted d-block mb-2">Status: Menunggu proses...</small>
         <button class="btn btn-primary btn-sm w-100" id="start-training" disabled>Start Training</button>
         <button class="btn btn-link btn-sm w-100 mt-1 d-none" id="training-result"><i
                 class="fa-solid fa-arrow-up-right-from-square"></i> Lihat Hasil</button>
@@ -459,8 +457,7 @@
             headers: {
                 'X-CSRFToken': getCookie('csrftoken')
             }
-        })
-            .then(res => res.json())
+        }).then(res => res.json())
             .then(data => {
                 clearInterval(interval);
                 bar.style.width = '100%';
@@ -512,12 +509,10 @@
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Tutup</button>
                 </div>
             </div>
-        </div>
-    `;
+        </div>`;
         document.body.appendChild(modalDiv);
         const modal = new bootstrap.Modal(modalDiv);
         modal.show();
-
         modalDiv.addEventListener('hidden.bs.modal', () => {
             modalDiv.remove();
         });
@@ -539,8 +534,6 @@
         return cookieValue;
     }
 
-
-
     updatePreview();
 </script>
 
@@ -551,8 +544,6 @@
 
     document.getElementById("start-training").addEventListener("click", () => {
         
-        console.log("btn start training listener");
-
         const btn = document.getElementById("start-training");
         const resultBtn = document.getElementById("training-result");
         const bar = document.getElementById("training-progress");
@@ -581,15 +572,11 @@
                 // Menyertakan CSRF Token wajib untuk metode POST di Django
                 'X-CSRFToken': getCookie('csrftoken')
             }
-        })
-            .then(res => res.json())
-            .then(data => {
-                console.log(data);
+        }).then(res => res.json()).then(data => {
                 alert(data.message || "Training dimulai!");
                 progressInterval = setInterval(updateProgressBar, 2000);
             })
             .catch(err => {
-                console.error("Error:", err);
                 alert("Gagal memulai training.");
                 btn.disabled = false;
                 btn.innerText = "Start Training";
@@ -597,7 +584,6 @@
     });
 
     function updateProgressBar() {
-        // Menggunakan tag url Django untuk get-progress juga
         fetch("{% url 'get_training_progress' %}")
             .then(res => res.json())
             .then(data => {
@@ -609,22 +595,29 @@
                 bar.style.width = progress + "%";
                 bar.innerText = progress + "%";
 
-                if (progress >= 100 || data.status === "done" || data.status === "error") {
+                // Cek apakah training benar-benar error (status === "error")
+                if (data.status === "error") {
+                    clearInterval(progressInterval);
+                    bar.classList.add("bg-danger");
+                    alert("Terjadi error saat training: " + (data.metrics?.error || "Unknown error"));
+                    
+                    btn.disabled = false;
+                    btn.innerText = "Start Training";
+                    return;
+                }
+
+                // Jika progress sudah 100 atau status sudah "done"
+                if (progress >= 100 || data.status === "done") {
                     clearInterval(progressInterval);
 
-                    if (data.status === "done") {
-                        bar.classList.add("bg-success");
-                        resultBtn.classList.remove("d-none");
-                        resultBtn.innerText = "Lihat Hasil Training";
-                        resultBtn.onclick = () => showTrainingResult();
-                        
-                        // Otomatis refresh tabel daftar model setelah training selesai
-                        if (typeof fetchModelsList === 'function') {
-                            fetchModelsList();
-                        }
-                    } else {
-                        bar.classList.add("bg-danger");
-                        alert("Terjadi error saat training: " + (data.metrics?.error || "Unknown error"));
+                    bar.classList.add("bg-success");
+                    resultBtn.classList.remove("d-none");
+                    resultBtn.innerText = "Lihat Hasil Training";
+                    resultBtn.onclick = () => showTrainingResult();
+                    
+                    // Otomatis refresh tabel daftar model setelah training selesai
+                    if (typeof fetchModelsList === 'function') {
+                        fetchModelsList();
                     }
 
                     btn.disabled = false;
@@ -640,6 +633,8 @@
             .then(res => res.json())
             .then(metrics => {
                 if (!metrics) return;
+                
+                console.log("Response dari get_training_results:", metrics);
 
                 // Mengisi elemen teks metrik dengan fallback aman
                 document.getElementById("result-acc").innerText = metrics.accuracy || metrics.akurasi || "-";
@@ -658,6 +653,9 @@
                 }
 
                 // Render Plot PCA 3D jika ada data scatter_features
+                const modalBody = document.querySelector("#trainingResultModal .modal-body");
+                let plotDiv = document.getElementById("pca-3d-plot");
+
                 if (metrics.scatter_features && metrics.scatter_features.length > 0) {
                     const data = metrics.scatter_features;
                     const x = data.map(p => p[0]);
@@ -686,61 +684,88 @@
                         }
                     };
 
-                    if (!document.getElementById("pca-3d-plot")) {
-                        const modalBody = document.querySelector("#trainingResultModal .modal-body");
-                        const div = document.createElement("div");
-                        div.id = "pca-3d-plot";
-                        div.style.width = "100%";
-                        div.style.height = "400px";
-                        div.classList.add("mt-3");
-                        modalBody.appendChild(div);
+                    // Jika elemen div belum ada, buat baru
+                    if (!plotDiv) {
+                        plotDiv = document.createElement("div");
+                        plotDiv.id = "pca-3d-plot";
+                        plotDiv.style.width = "100%";
+                        plotDiv.style.height = "400px";
+                        plotDiv.classList.add("mt-3");
+                        modalBody.appendChild(plotDiv);
                     }
 
-                    Plotly.newPlot("pca-3d-plot", [trace], layout, { responsive: true });
+                    // Gunakan Plotly.react agar merender ulang / update dengan mulus
+                    Plotly.react("pca-3d-plot", [trace], layout, { responsive: true });
+                } else {
+                    // Jika scatter_features kosong, hapus plot jika sebelumnya sempat terbuat
+                    if (plotDiv) {
+                        plotDiv.remove();
+                    }
                 }
 
                 // Tampilkan Modal Bootstrap
                 const modalElement = document.getElementById("trainingResultModal");
                 const modal = bootstrap.Modal.getOrCreateInstance(modalElement);
                 modal.show();
+
+                // Fix bug ukuran Plotly yang kadang mengecil saat pertama kali modal muncul
+                setTimeout(() => {
+                    if (document.getElementById("pca-3d-plot")) {
+                        Plotly.Plots.resize("pca-3d-plot");
+                    }
+                }, 200);
             })
             .catch(err => console.error("Error fetch results:", err));
     }
-    
+
     function fetchModelsList() {
-        fetch("/list_models/")
-            .then(res => res.json())
-            .then(data => {
-                const tbody = document.querySelector("#list-models-table tbody");
-                tbody.innerHTML = "";
+            fetch("/list_models/")
+                .then(res => res.json())
+                .then(data => {
+                    const tbody = document.querySelector("#list-models-table tbody");
+                    tbody.innerHTML = "";
 
-                if (!data.models || data.models.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="6" class="text-center">Tidak ada model</td></tr>';
-                    return;
-                }
+                    if (!data.models || data.models.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="6" class="text-center">Tidak ada model</td></tr>';
+                        return;
+                    }
 
-                data.models.forEach((model, index) => {
-                    const tr = document.createElement("tr");
-                    tr.innerHTML = `
-                    <td>${index + 1}</td>
-                    <td>${model.filename || "-"}</td>
-                    <td>${model.algorithm || "-"}</td>
-                    <td>${model.dataset || "-"}</td>
-                    <td>${model.modified || "-"}</td>
-                    <td>
-                        <button class="btn btn-sm btn-info" onclick="showModelResult('${model.id}')">Lihat</button>
-                        <label class="btn btn-sm btn-info custom-radio">
-                            Pilih
-                            <input type="radio" name="selected_model" onchange="selectModel('${model.filename || ''}')">
-                        </label>
-                    </td>
-                `;
-                    tbody.appendChild(tr);
-                });
-            })
-            .catch(err => console.error("Error fetch models:", err));
-    }
+                    data.models.forEach((model, index) => {
+                        // Parser pintar di sisi Frontend untuk memformat nama algoritma & dataset secara otomatis
+                        let algoDisplay = model.algorithm || "";
+                        if (!algoDisplay || algoDisplay.toLowerCase() === "cnn") {
+                            const filename = model.filename || "";
+                            const parts = filename.replace(".pkl", "").split("_");
+                            if (parts.length >= 3) {
+                                algoDisplay = `${parts[0].toUpperCase()} + ${parts[1].toUpperCase()}`;
+                            } else if (parts.length === 2) {
+                                algoDisplay = parts[0].toUpperCase();
+                            } else {
+                                algoDisplay = "CNN + XGBOOST";
+                            }
+                        }
 
+                        const tr = document.createElement("tr");
+                        tr.innerHTML = `
+                        <td>${index + 1}</td>
+                        <td>${model.filename || "-"}</td>
+                        <td>${algoDisplay}</td>
+                        <td>${model.dataset ? model.dataset.toUpperCase() : "-"}</td>
+                        <td>${model.modified || "-"}</td>
+                        <td>
+                            <button class="btn btn-sm btn-info" onclick="showModelResult('${model.modelId}','${model.filename}','${model.filename}')">Lihat</button>
+                            <label class="btn btn-sm btn-info custom-radio">
+                                Pilih
+                                <input type="radio" name="selected_model" onchange="selectModel('${model.filename || ''}')">
+                            </label>
+                        </td>
+                    `;
+                        tbody.appendChild(tr);
+                    });
+                })
+                .catch(err => console.error("Error fetch models:", err));
+        }
+    
     // Fungsi ketika user pilih model
     function selectModel(modelName) {
         console.log("Dipilih model:", modelName);
@@ -755,15 +780,27 @@
         window.open(url, "_blank");
     }
 
-    // Lihat model (misal tampilkan modal hasil)
-    function showModelResult(modelId) {
-        fetch(`/get-results/?id=${modelId}`)
-            .then(res => res.json())
-            .then(metrics => {
-                showTrainingResult();
-            })
-            .catch(err => console.error("Error fetch model result:", err));
-    }
+    // Lihat model (misal tampilkan modal hasil atau buka PDF laporan)
+    function showModelResult(modelId,filename) {
+    // modelId berisi nama file misal: "cnn_xgboost_retina.pkl"
+    // Kita ubah ekstensi .pkl menjadi .pdf
+    const pdfFilename = filename.replace(/\.pkl$/i, '.pdf');
+    
+    // Path direktori tempat file disimpan (sesuaikan dengan static/media URL Django Anda, misal /media/models/ atau /models/)
+    const pdfUrl = `/models/${pdfFilename}`; 
+
+    // Opsi 1: Membuka file PDF laporan di tab baru browser
+    window.open(pdfUrl, '_blank');
+
+    // Jika Anda tetap ingin mengambil data JSON untuk modal metrik:
+    fetch(`/get-results/?id=${modelId}`)
+        .then(res => res.json())
+        .then(metrics => {
+            showTrainingResult();
+            console.log(metrics);
+        })
+        .catch(err => console.error("Error fetch model result:", err));
+}
 
     // Fungsi helper untuk CSRF Token
     function getCookie(name) {
@@ -786,26 +823,25 @@
         fetchModelsList();
     });
 </script>
+
 <script>
     document.querySelectorAll('input[type="radio"]').forEach(radio => {
         radio.addEventListener('click', function () {
             if (this.previousChecked) {
-                this.checked = false;       // unselect radio
+                this.checked = false;      // unselect radio
             }
             this.previousChecked = this.checked;
         });
     });
 
-    let kfoldDataStore = { k: 0, scores: [], confMatrix: null };
+    // Tambahkan classNames ke dalam data store
+    let kfoldDataStore = { k: 0, scores: [], confMatrix: null, classNames: [] };
 
-    // Trigger K-Fold Evaluation saat tombol Refresh Evaluation diklik
-    document.getElementById('refresh-eval').addEventListener('click', function () {
+    // Trigger K-Fold Evaluation nyata ke Backend Django saat tombol Refresh Evaluation diklik
+   document.getElementById('refresh-eval').addEventListener('click', function () {
         let kfoldInput = prompt('Masukkan jumlah K-Fold Cross Validation:', 5);
         let k = parseInt(kfoldInput);
         if (isNaN(k) || k < 2) return alert('Jumlah K-Fold minimal 2!');
-
-        kfoldDataStore.k = k;
-        kfoldDataStore.scores = [];
 
         let bar = document.getElementById('eval-progress'); 
         bar.style.width = '0%'; 
@@ -814,54 +850,92 @@
 
         let width = 0; 
         let interval = setInterval(() => {
-            if (width >= 100) {
-                clearInterval(interval); 
-                bar.textContent = '100%'; 
-                document.getElementById('eval-result').classList.remove('d-none');
-                
-                // Simulasi hasil K-Fold & Akurasi Rata-rata
-                let totalAcc = 0;
-                for (let i = 1; i <= k; i++) {
-                    let foldAcc = 80 + Math.random() * 18; // Akurasi random 80% - 98%
-                    kfoldDataStore.scores.push({ fold: i, accuracy: foldAcc.toFixed(2) });
-                    totalAcc += foldAcc;
-                }
-
-                let avgAcc = (totalAcc / k).toFixed(2);
-                let avgLoss = (0.05 + Math.random() * 0.1).toFixed(4);
-
-                document.getElementById('eval-accuracy').textContent = 'Akurasi: ' + avgAcc + '%';
-                document.getElementById('eval-loss').textContent = 'Loss: ' + avgLoss;
-
-                // Dummy Confusion Matrix 2x2 atau 3x3 untuk contoh link popup
-                kfoldDataStore.confMatrix = [
-                    [45, 3],
-                    [2, 50]
-                ];
-
-                // Aktifkan link [link] confusion matrix
-                const cmLink = document.getElementById('cm-link');
-                cmLink.style.pointerEvents = 'auto';
-                cmLink.style.color = '#0d6efd !important';
-            } else { 
-                width += 5; 
+            // Naikkan secara perlahan hingga maksimal 95% sambil menunggu backend selesai
+            if (width < 95) {
+                width += 2; 
                 bar.style.width = width + '%'; 
                 bar.textContent = width + '%'; 
             }
-        }, 30);
+        }, 150);
+
+        let datasetVal = document.getElementById('dataset-input').value || 'Retina';
+        let optimasiVal = document.getElementById('optimasi-input').value || 'XGBoost';
+        let algoritmaVal = document.getElementById('algoritma-input').value || 'CNN';
+
+        const formData = new FormData();
+        formData.append('k_fold', k);
+        formData.append('dataset', datasetVal);
+        formData.append('optimasi', optimasiVal);
+        formData.append('algorimta', algoritmaVal);
+
+        // Panggil endpoint yang benar
+        fetch('/classifier/run-kfold/', {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-CSRFToken': getCookie('csrftoken')
+            }
+        })
+        .then(res => res.json())
+        .then(data => {
+            clearInterval(interval);
+            bar.style.width = '100%';
+            bar.textContent = '100%';
+
+            if (data.status === 'success') {
+                document.getElementById('eval-result').classList.remove('d-none');
+
+                kfoldDataStore.k = data.k;
+                kfoldDataStore.scores = data.scores;
+                
+                // Ambil data kelas asli & Confusion Matrix multikelas dari backend
+                kfoldDataStore.classNames = data.class_names || [];
+                kfoldDataStore.confMatrix = data.confusion_matrix || null;
+
+                document.getElementById('eval-accuracy').textContent = 'Akurasi: ' + data.average_accuracy;
+                document.getElementById('eval-loss').textContent = 'Loss: ' + data.average_loss;
+
+                const cmLink = document.getElementById('cm-link');
+                cmLink.style.pointerEvents = 'auto';
+                cmLink.style.color = '#0d6efd !important';
+            } else {
+                alert(data.msg || 'Gagal menjalankan K-Fold Evaluation');
+            }
+        })
+        .catch(err => {
+            clearInterval(interval);
+            bar.style.width = '0%';
+            bar.textContent = 'Error!';
+            console.error('Error K-Fold:', err);
+            alert('Terjadi kesalahan koneksi ke server atau URL endpoint tidak ditemukan.');
+        });
     });
 
-    // 1. Event klik link [link] Confusion Matrix
+    // 1. Event klik link [link] Confusion Matrix (Merender nama kelas dinamis)
     document.getElementById('cm-link').addEventListener('click', function(e) {
         e.preventDefault();
-        if (!kfoldDataStore.confMatrix) return alert('Lakukan Refresh Evaluation terlebih dahulu!');
+        if (!kfoldDataStore.confMatrix) return alert('Lakukan Refresh Evaluation terlebih dahulu atau matrix belum tersedia!');
 
         document.getElementById('evalModalTitle').textContent = 'Confusion Matrix Evaluation';
         
-        let html = '<table class="table table-bordered text-center mb-0"><thead><tr><th>Actual \\ Pred</th><th>Class 0</th><th>Class 1</th></tr></thead><tbody>';
-        kfoldDataStore.confMatrix.forEach((row, rIdx) => {
-            html += `<tr><td><strong>Class ${rIdx}</strong></td>`;
-            row.forEach(val => { html += `<td>${val}</td>`; });
+        let cm = kfoldDataStore.confMatrix;
+        
+        // Ambil nama kelas dinamis berdasarkan jumlah baris matrix
+        let classNames = (kfoldDataStore.classNames && kfoldDataStore.classNames.length === cm.length) 
+            ? kfoldDataStore.classNames 
+            : cm.map((_, i) => `Class ${i}`);
+
+        let html = '<table class="table table-bordered text-center mb-0"><thead><tr><th>Actual \\ Pred</th>';
+        classNames.forEach(name => { 
+            html += `<th>${name}</th>`; 
+        });
+        html += '</tr></thead><tbody>';
+
+        cm.forEach((row, rIdx) => {
+            html += `<tr><td><strong>${classNames[rIdx]}</strong></td>`;
+            row.forEach(val => { 
+                html += `<td>${val}</td>`; 
+            });
             html += '</tr>';
         });
         html += '</tbody></table>';
@@ -869,7 +943,7 @@
         document.getElementById('evalModalBody').innerHTML = html;
         new bootstrap.Modal(document.getElementById('evalResultModal')).show();
     });
-
+    
     // 2. Event klik tombol "Lihat Hasil K-Fold"
     document.getElementById('eval-result').addEventListener('click', function() {
         if (kfoldDataStore.scores.length === 0) return alert('Belum ada data K-Fold!');

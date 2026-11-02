@@ -8,7 +8,8 @@ from .views_training_classification import (
     get_training_progress, 
     get_training_results,
     run_testing,
-    run_kfold_evaluation
+    run_kfold_evaluation,
+    list_models
 )
 
 urlpatterns = [
@@ -35,5 +36,6 @@ urlpatterns = [
     path('classifier/get-results/', get_training_results, name='get_training_results'),
     path('classifier/run-testing/', run_testing, name='run_testing'),
     # Endpoint opsional jika evaluasi K-Fold ingin diproses di backend Python
-    path('classifier/run_kfold/', run_kfold_evaluation, name='run_kfold_evaluation'),
+    path('run-kfold/', run_kfold_evaluation, name='run_kfold_evaluation'),
+    path('list_models/', list_models, name='list_models'),
 ]

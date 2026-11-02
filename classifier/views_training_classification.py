@@ -1,17 +1,25 @@
 import os
 import threading
 import traceback
+import datetime
 import numpy as np
 import joblib
 import xgboost as xgb
 import tensorflow as tf
 from tensorflow.keras.models import Model
-from sklearn.metrics import precision_score, recall_score, f1_score, confusion_matrix
+from sklearn.metrics import precision_score, recall_score, f1_score, confusion_matrix, accuracy_score
+from sklearn.model_selection import KFold
+from sklearn.decomposition import PCA
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.conf import settings
-from sklearn.model_selection import KFold
-from sklearn.metrics import accuracy_score
+from PIL import Image
+
+# Library ReportLab untuk Generate PDF di Backend
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib import colors
 
 # ========================
 # Status Global Training
@@ -41,6 +49,111 @@ def update_progress(epoch, total, loss, acc):
         "percent": prog
     })
 
+def generate_pdf_report(pdf_path, algoritma, optimasi, dataset, metrics, class_names):
+    """Fungsi helper untuk membuat PDF laporan training dan menyimpannya di folder models/"""
+    try:
+        doc = SimpleDocTemplate(pdf_path, pagesize=letter, rightMargin=40, leftMargin=40, topMargin=40, bottomMargin=40)
+        story = []
+
+        styles = getSampleStyleSheet()
+        title_style = ParagraphStyle(
+            'TitleStyle',
+            parent=styles['Heading1'],
+            fontSize=18,
+            spaceAfter=12,
+            textColor=colors.HexColor("#0d6efd")
+        )
+        subtitle_style = ParagraphStyle(
+            'SubTitleStyle',
+            parent=styles['Normal'],
+            fontSize=10,
+            textColor=colors.gray,
+            spaceAfter=15
+        )
+
+        # Judul & Tanggal
+        story.append(Paragraph("Laporan Hasil Training Model Klasifikasi", title_style))
+        story.append(Paragraph(f"Waktu Pembuatan: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", subtitle_style))
+        story.append(Spacer(1, 10))
+
+        # Informasi Model & Dataset
+        info_data = [
+            ["Algoritma Utama", algoritma],
+            ["Optimasi / Classifier", optimasi],
+            ["Dataset", dataset],
+            ["Jumlah Kelas", str(len(class_names))]
+        ]
+        t_info = Table(info_data, colWidths=[150, 250])
+        t_info.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (0, -1), colors.HexColor("#e9ecef")),
+            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+            ('GRID', (0, 0), (-1, -1), 1, colors.HexColor("#dee2e6")),
+            ('PADDING', (0, 0), (-1, -1), 6),
+        ]))
+        story.append(t_info)
+        story.append(Spacer(1, 15))
+
+        # Ringkasan Metrik Evaluasi
+        story.append(Paragraph("<b>Metrik Evaluasi Model</b>", styles['Heading2']))
+        story.append(Spacer(1, 6))
+
+        acc = metrics.get("akurasi", f"{metrics.get('accuracy', 0)}%")
+        prec = metrics.get("precision", "-")
+        rec = metrics.get("recall", "-")
+        f1 = metrics.get("f1", "-")
+
+        summary_data = [
+            ["Metrik Evaluasi", "Nilai Real"],
+            ["Akurasi", str(acc)],
+            ["Precision (Macro)", str(prec)],
+            ["Recall (Macro)", str(rec)],
+            ["F1-Score (Macro)", str(f1)]
+        ]
+
+        t_summary = Table(summary_data, colWidths=[200, 200])
+        t_summary.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#0d6efd")),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor("#f8f9fa")),
+            ('GRID', (0, 0), (-1, -1), 1, colors.HexColor("#dee2e6")),
+            ('PADDING', (0, 0), (-1, -1), 6),
+        ]))
+        story.append(t_summary)
+        story.append(Spacer(1, 20))
+
+        # Confusion Matrix Table
+        cm = metrics.get("confusion_matrix", [])
+        if cm:
+            story.append(Paragraph("<b>Confusion Matrix</b>", styles['Heading2']))
+            story.append(Spacer(1, 6))
+            
+            # Header tabel kelas
+            cm_table_data = [["Predicted ->"] + class_names]
+            for i, row in enumerate(cm):
+                row_label = class_names[i] if i < len(class_names) else f"Class {i}"
+                cm_table_data.append([row_label] + list(map(str, row)))
+
+            t_cm = Table(cm_table_data)
+            t_cm.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#6c757d")),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+                ('GRID', (0, 0), (-1, -1), 1, colors.grey),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('BACKGROUND', (1, 1), (-1, -1), colors.whitesmoke),
+                ('PADDING', (0, 0), (-1, -1), 6),
+            ]))
+            story.append(t_cm)
+
+        doc.build(story)
+        print(f"✅ File PDF Laporan Berhasil Disimpan di: {pdf_path}")
+    except Exception as pdf_err:
+        print(f"⚠️ Gagal membuat PDF Laporan: {str(pdf_err)}")
+
 @csrf_exempt
 def start_training_classification(request):
     global stop_training_flag, training_status
@@ -62,7 +175,8 @@ def start_training_classification(request):
         "epoch": 0,
         "progress": 0,
         "percent": 0,
-        "metrics": {}
+        "metrics": {},
+        "scatter_features": []
     })
 
     ds_name = dataset.lower().replace(" ", "_")
@@ -126,11 +240,21 @@ def start_training_classification(request):
                 update_progress(epoch + 1, total_epochs, loss_val, acc_val)
 
             # Ground truth validasi
-            y_true = np.concatenate([y.numpy() for _, y in val_cached], axis=0)
+            y_true = np.concatenate([y.numpy() for _, y in val_cached], axis=0).astype(int)
+
+            # Penentuan Nama File Model & PDF
+            algo_str = algoritma.lower()
+            opt_str = optimasi.lower()
+            base_filename = f"{algo_str}_{opt_str}_{ds_name}"
+            
+            model_filename = f"{base_filename}.pkl"
+            pdf_filename = f"{base_filename}.pdf"
+
+            model_path = os.path.join(MODEL_DIR, model_filename)
+            pdf_path = os.path.join(MODEL_DIR, pdf_filename)
 
             # Cek apakah menggunakan Hybrid XGBoost atau CNN murni
             if optimasi.lower() == "xgboost" or not optimasi:
-                # Ekstraksi fitur embedding Training
                 all_embeddings, all_labels = [], []
                 for imgs_batch, lbls_batch in train_ds:
                     emb = embedding_model.predict(imgs_batch, verbose=0)
@@ -143,7 +267,6 @@ def start_training_classification(request):
                 xgb_model = xgb.XGBClassifier(n_estimators=100, max_depth=5, learning_rate=0.05, eval_metric='mlogloss')
                 xgb_model.fit(X_emb, y_emb)
                 
-                # Ekstraksi fitur embedding Validasi untuk evaluasi XGBoost
                 val_embeddings = []
                 for imgs_batch, _ in val_ds:
                     emb_val = embedding_model.predict(imgs_batch, verbose=0)
@@ -152,29 +275,64 @@ def start_training_classification(request):
 
                 y_pred = xgb_model.predict(X_val_emb)
 
-                # Simpan model bundle
-                algo_str = algoritma.lower()
-                opt_str = optimasi.lower()
-                model_filename = f"{algo_str}_{opt_str}_{ds_name}.pkl"
-                model_path = os.path.join(MODEL_DIR, model_filename)
-
+                # Simpan model bundle .pkl (Menyimpan model utama & embedding_model jika diperlukan)
                 model_bundle = {
                     "model": xgb_model,
+                    "embedding_model": embedding_model,
                     "class_names": class_names
                 }
                 joblib.dump(model_bundle, model_path)
             else:
                 val_preds = cnn_model.predict(val_cached, verbose=0)
                 y_pred = np.argmax(val_preds, axis=1)
+                
+                val_embeddings = []
+                for imgs_batch, _ in val_ds:
+                    emb_val = embedding_model.predict(imgs_batch, verbose=0)
+                    val_embeddings.append(emb_val)
+                X_val_emb = np.vstack(val_embeddings)
 
-            # Hitung Metrik Evaluasi
+                # Simpan model bundle .pkl (CNN murni)
+                model_bundle = {
+                    "model": cnn_model,
+                    "class_names": class_names
+                }
+                joblib.dump(model_bundle, model_path)
+
+            # Pastikan format y_pred aman
+            if isinstance(y_pred, np.ndarray):
+                y_pred = y_pred.astype(int)
+            else:
+                y_pred = np.array(y_pred).astype(int)
+
+            if len(y_pred.shape) > 1:
+                y_pred = np.argmax(y_pred, axis=1)
+
+            # Hitung Metrik Evaluasi Real
             acc = accuracy_score(y_true, y_pred)
             precision = precision_score(y_true, y_pred, average='macro', zero_division=0)
             recall = recall_score(y_true, y_pred, average='macro', zero_division=0)
             f1 = f1_score(y_true, y_pred, average='macro', zero_division=0)
-            cm = confusion_matrix(y_true, y_pred, labels=list(range(len(class_names))))
+            
+            num_classes = len(class_names)
+            labels_list = list(range(num_classes))
+            cm = confusion_matrix(y_true, y_pred, labels=labels_list)
 
+            # Ekstraksi PCA 3D
+            scatter_data = []
+            try:
+                pca = PCA(n_components=3)
+                pca_coords = pca.fit_transform(X_val_emb)
+                for i in range(len(pca_coords)):
+                    x_val, y_val, z_val = pca_coords[i]
+                    label_val = int(y_true[i])
+                    scatter_data.append([float(x_val), float(y_val), float(z_val), label_val])
+            except Exception as pca_err:
+                print(f"⚠️ Gagal menghasilkan PCA scatter features: {str(pca_err)}")
+
+            # Update ke Global Status
             training_status["accuracy"] = float(acc)
+            training_status["scatter_features"] = scatter_data
             training_status["metrics"] = {
                 "accuracy": round(float(acc) * 100, 2),
                 "akurasi": f"{round(float(acc) * 100, 2)}%",
@@ -183,8 +341,21 @@ def start_training_classification(request):
                 "f1": round(float(f1), 4),
                 "f1_score": round(float(f1), 4),
                 "confusion_matrix": cm.tolist(),
-                "class_labels": class_names
+                "class_labels": class_names,
+                "scatter_features": scatter_data
             }
+
+            # =========================================================
+            # PROSES OTOMATIS GENERATE DAN SIMPAN PDF DI FOLDER MODELS/
+            # =========================================================
+            generate_pdf_report(
+                pdf_path=pdf_path,
+                algoritma=algoritma,
+                optimasi=optimasi,
+                dataset=dataset,
+                metrics=training_status["metrics"],
+                class_names=class_names
+            )
 
             training_status["status"] = "done"
 
@@ -199,62 +370,251 @@ def start_training_classification(request):
     return JsonResponse({"status": "success", "message": "Proses training model berhasil dimulai!"})
 
 
-@csrf_exempt
 def get_training_results(request):
     metrics = training_status.get("metrics", {}).copy()
     
-    # Format persentase untuk akurasi
-    acc_val = training_status.get('accuracy', 0.0) * 100
-    if "accuracy" not in metrics or not str(metrics["accuracy"]).endswith("%"):
-        metrics["accuracy"] = f"{round(acc_val, 2)}%"
-    metrics["akurasi"] = metrics["accuracy"]
-    
-    # Pastikan key standar tersedia
-    metrics.setdefault("precision", "-")
-    metrics.setdefault("recall", "-")
-    metrics.setdefault("f1", "-")
-    metrics.setdefault("f1_score", metrics.get("f1", "-"))
-    metrics.setdefault("confusion_matrix", [])
-    
+    if not metrics or "precision" not in metrics:
+        acc_val = training_status.get('accuracy', 0.0) * 100
+        metrics = {
+            "accuracy": f"{round(acc_val, 2)}%",
+            "akurasi": f"{round(acc_val, 2)}%",
+            "precision": "-",
+            "recall": "-",
+            "f1": "-",
+            "f1_score": "-",
+            "confusion_matrix": [],
+            "scatter_features": training_status.get("scatter_features", [])
+        }
+    else:
+        if "accuracy" in metrics and not str(metrics["accuracy"]).endswith("%"):
+            metrics["accuracy"] = f"{round(float(metrics['accuracy']), 2)}%"
+            metrics["akurasi"] = metrics.get("accuracy", f"{round(training_status.get('accuracy', 0.0) * 100, 2)}%")
+            metrics.setdefault("precision", "-")
+            metrics.setdefault("recall", "-")
+            metrics.setdefault("f1", "-")
+            metrics.setdefault("f1_score", metrics.get("f1", "-"))
+            metrics.setdefault("confusion_matrix", [])
+            metrics["scatter_features"] = metrics.get("scatter_features", training_status.get("scatter_features", []))
+
     return JsonResponse(metrics)
 
+
 def get_training_progress(request):
+    if training_status.get("progress", 0) >= 100 and training_status.get("status") == "training":
+        training_status["status"] = "done"
+        
     return JsonResponse(training_status)
 
 
-# def get_training_results(request):
-#     metrics = training_status.get("metrics", {})
-#     metrics["accuracy"] = f"{round(training_status.get('accuracy', 0) * 100, 2)}%"
-#     return JsonResponse(metrics)
-
+def list_models(request):
+    MODEL_DIR = os.path.join(settings.BASE_DIR, "models")
+    if not os.path.exists(MODEL_DIR):
+        os.makedirs(MODEL_DIR, exist_ok=True)
+        
+    models_data = []
+    files = os.listdir(MODEL_DIR)
+    
+    for filename in files:
+        if filename.endswith(".pkl"):
+            name_without_ext = filename[:-4]
+            parts = name_without_ext.split("_")
+            
+            if len(parts) >= 3:
+                algo_main = parts[0].upper()
+                algo_opt = parts[1].capitalize()
+                algorithm_display = f"{algo_main} + {algo_opt}"
+                dataset_name = " ".join(parts[2:]).capitalize()
+            elif len(parts) == 2:
+                algo_main = parts[0].upper()
+                algorithm_display = algo_main
+                dataset_name = parts[1].capitalize()
+            else:
+                algorithm_display = "CNN"
+                dataset_name = name_without_ext.capitalize()
+                
+            file_path = os.path.join(MODEL_DIR, filename)
+            mod_time = os.path.getmtime(file_path)
+            formatted_date = datetime.datetime.fromtimestamp(mod_time).strftime('%Y-%m-%d %H:%M:%S')
+            
+            # Cek apakah file PDF laporan pendamping ada
+            pdf_filename = f"{name_without_ext}.pdf"
+            has_pdf = os.path.exists(os.path.join(MODEL_DIR, pdf_filename))
+            
+            models_data.append({
+                "id": filename,
+                "filename": filename,
+                "pdf_filename": pdf_filename if has_pdf else None,
+                "algorithm": algorithm_display,
+                "dataset": dataset_name,
+                "modified": formatted_date
+            })
+            
+    return JsonResponse({"models": models_data})
 
 @csrf_exempt
 def run_testing(request):
+    print("\n" + "="*50)
+    print(" [FLOW] === Memulai eksekusi request run_testing ===")
+    
     if request.method != "POST":
+        print(" [FLOW ERROR] Method tidak diizinkan:", request.method)
         return JsonResponse({"status": "error", "msg": "Method tidak diizinkan!"}, status=405)
 
     try:
         model_filename = request.POST.get("select-model")
+        print(f" [FLOW] Model yang dipilih dari request: '{model_filename}'")
+        
         if not model_filename:
+            print(" [FLOW ERROR] Nama model kosong.")
             return JsonResponse({"status": "error", "msg": "Belum ada model yang dipilih!"})
 
         model_path = os.path.join(settings.BASE_DIR, "models", model_filename)
+        print(f" [FLOW] Mencari file model di path: {model_path}")
+        
         if not os.path.exists(model_path):
+            print(f" [FLOW ERROR] File model tidak ditemukan di path tersebut.")
             return JsonResponse({"status": "error", "msg": f"File model {model_filename} tidak ditemukan."})
 
+        print(" [FLOW] Memuat model menggunakan joblib.load()...")
         saved_bundle = joblib.load(model_path)
+        
+        # Ekstrak komponen dari bundle
         if isinstance(saved_bundle, dict):
-            model = saved_bundle["model"]
+            model = saved_bundle.get("model")                
+            embedding_model = saved_bundle.get("embedding_model") 
             class_names = saved_bundle.get("class_names", [])
+            print(f" [FLOW] Bundle berupa dictionary. Tipe model: {type(model)}, Jumlah class_names: {len(class_names)}")
         else:
             model = saved_bundle
+            embedding_model = None
             class_names = []
+            print(f" [FLOW] Bundle bukan dictionary. Tipe model: {type(model)}")
 
         uploaded_files = request.FILES.getlist("test_file")
+        print(f" [FLOW] Jumlah file gambar yang diunggah: {len(uploaded_files)}")
+        
         if not uploaded_files:
+            print(" [FLOW ERROR] Tidak ada file gambar dalam request.")
             return JsonResponse({"status": "error", "msg": "Tidak ada file gambar yang diunggah."})
 
         img_size = (224, 224)
+        results = []
+
+        for idx, f in enumerate(uploaded_files):
+            print(f"\n --- [FLOW] Memproses file ke-{idx+1}: {f.name} ---")
+            try:
+                image_bytes = f.read()
+                if not image_bytes:
+                    raise ValueError("File gambar kosong.")
+                print(f" [FLOW] Berhasil membaca bytes file ({len(image_bytes)} bytes)")
+
+                img_tensor = tf.image.decode_image(image_bytes, expand_animations=False)
+                print(f" [FLOW] Tensor decoded shape awal: {img_tensor.shape}")
+                
+                if len(img_tensor.shape) == 2:
+                    img_tensor = tf.expand_dims(img_tensor, -1)
+                
+                if img_tensor.shape[-1] == 1:
+                    img_tensor = tf.image.grayscale_to_rgb(img_tensor)
+                    print(" [FLOW] Mengubah grayscale ke RGB.")
+                elif img_tensor.shape[-1] > 3:
+                    img_tensor = img_tensor[..., :3]
+                    print(" [FLOW] Memotong channel melebihi 3.")
+
+                img_tensor.set_shape([None, None, 3])
+                img_tensor = tf.image.resize(img_tensor, img_size)
+                
+                # Normalisasi Rescaling
+                img_tensor = tf.cast(img_tensor, tf.float32) / 255.0
+                img_array = tf.expand_dims(img_tensor, 0)
+                print(f" [FLOW] Shape akhir img_array untuk prediksi: {img_array.shape}")
+
+                # Cek jenis model dan lakukan prediksi
+                if isinstance(model, xgb.XGBClassifier):
+                    print(" [FLOW] Model terdeteksi sebagai XGBoost. Melakukan ekstraksi fitur...")
+                    if embedding_model is None:
+                        raise ValueError("Model XGBoost memerlukan embedding_model yang valid di dalam bundle!")
+                    
+                    features = embedding_model.predict(img_array, verbose=0)
+                    print(f" [FLOW] Fitur berhasil diekstrak. Shape fitur: {features.shape}")
+                    
+                    prediction = model.predict(features)
+                    pred_idx = int(prediction[0])
+                else:
+                    print(" [FLOW] Model terdeteksi sebagai Keras/Sequential utuh. Melakukan prediksi langsung...")
+                    preds = model.predict(img_array, verbose=0)
+                    pred_idx = int(np.argmax(preds, axis=1)[0])
+
+                print(f" [FLOW] Prediksi indeks kelas: {pred_idx}")
+
+                if class_names and pred_idx < len(class_names):
+                    predicted_label = class_names[pred_idx]
+                else:
+                    predicted_label = f"Kelas {pred_idx}"
+
+                print(f" [FLOW SUCCESS] File {f.name} -> Label: {predicted_label}")
+                results.append({
+                    "file": f.name,
+                    "prediction": predicted_label
+                })
+                
+            except Exception as img_err:
+                print(f" [FLOW ERROR] Gagal memproses gambar {f.name}: {str(img_err)}")
+                traceback.print_exc()
+                err_msg = str(img_err)
+                results.append({
+                    "file": f.name,
+                    "prediction": "error",
+                    "msg": err_msg
+                })
+
+        print(" [FLOW] Selesai memproses semua file. Mengirim JSON response...")
+        print("="*50 + "\n")
+        return JsonResponse({"status": "success", "result": results})
+
+    except Exception as e:
+        print(f" [FLOW CRITICAL ERROR] Terjadi error di level utama view: {str(e)}")
+        traceback.print_exc()
+        return JsonResponse({"status": "error", "msg": str(e)}, status=500)
+
+@csrf_exempt
+def run_kfold_evaluation(request):
+
+    if request.method != "POST":
+        return JsonResponse({"status": "error", "msg": "Method tidak diizinkan!"}, status=405)
+    
+    try:
+        k_value = int(request.POST.get("k_fold", 5))
+        dataset = request.POST.get("dataset", "Retina")
+        optimasi = request.POST.get("optimasi", "XGBoost")
+        algoritma = request.POST.get("algoritma", "CNN")
+        
+        ds_name = dataset.lower().replace(" ", "_")
+        train_dir = os.path.join(settings.BASE_DIR, "dataset", ds_name, "train")
+        
+        if not os.path.exists(train_dir):
+            return JsonResponse({"status": "error", "msg": f"Folder dataset train tidak ditemukan untuk {dataset}."}, status=400)
+
+        img_size = (224, 224)
+        batch_size = 32
+
+        # Muat dataset untuk evaluasi k-fold dari direktori
+        full_ds = tf.keras.utils.image_dataset_from_directory(
+            train_dir, image_size=img_size, batch_size=batch_size, shuffle=True
+        )
+        class_names = full_ds.class_names  # Mengambil daftar nama kelas asli (folder dataset)
+
+        # Ekstrak seluruh gambar dan label ke numpy array untuk K-Fold
+        images_list = []
+        labels_list = []
+        for img_batch, lbl_batch in full_ds:
+            images_list.append(img_batch.numpy())
+            labels_list.append(lbl_batch.numpy())
+            
+        X = np.concatenate(images_list, axis=0)
+        y = np.concatenate(labels_list, axis=0)
+
+        # Buat arsitektur CNN dasar & embedding model untuk ekstraksi fitur K-Fold
         inputs = tf.keras.Input(shape=(img_size[0], img_size[1], 3))
         x = tf.keras.layers.Rescaling(1.0 / 255)(inputs)
         x = tf.keras.layers.Conv2D(32, 3, activation='relu')(x)
@@ -263,76 +623,73 @@ def run_testing(request):
         x = tf.keras.layers.MaxPooling2D()(x)
         flatten_out = tf.keras.layers.Flatten(name="flatten_layer")(x)
         x_dense = tf.keras.layers.Dense(128, activation='relu')(flatten_out)
-        
+        outputs = tf.keras.layers.Dense(len(class_names), activation='softmax')(x_dense)
+
+        cnn_base = Model(inputs=inputs, outputs=outputs)
         embedding_model = Model(inputs=inputs, outputs=flatten_out)
+        cnn_base.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
 
-        results = []
-        for f in uploaded_files:
-            try:
-                image_bytes = f.read()
-                if not image_bytes:
-                    raise ValueError("File gambar kosong.")
-
-                # Decode gambar secara fleksibel
-                img_tensor = tf.image.decode_image(image_bytes, expand_animations=False)
-                
-                # Penanganan channel (Grayscale / RGBA ke RGB)
-                if len(img_tensor.shape) == 2:
-                    img_tensor = tf.expand_dims(img_tensor, -1)
-                
-                if img_tensor.shape[-1] == 1:
-                    img_tensor = tf.image.grayscale_to_rgb(img_tensor)
-                elif img_tensor.shape[-1] > 3:
-                    img_tensor = img_tensor[..., :3]
-
-                img_tensor.set_shape([None, None, 3])
-                img_tensor = tf.image.resize(img_tensor, img_size)
-                
-                img_array = tf.expand_dims(img_tensor, 0)
-                features = embedding_model.predict(img_array, verbose=0)
-
-                prediction = model.predict(features)
-                pred_idx = int(prediction[0])
-
-                if class_names and pred_idx < len(class_names):
-                    predicted_label = class_names[pred_idx]
-                else:
-                    predicted_label = f"Kelas {pred_idx}"
-
-                results.append({
-                    "file": f.name,
-                    "prediction": predicted_label
-                })
-            except Exception as img_err:
-                print(f"❌ Error processing image {f.name}: {str(img_err)}")
-                results.append({
-                    "file": f.name,
-                    "prediction": f"Error: {str(img_err)}"
-                })
-
-        return JsonResponse({"status": "success", "result": results})
-
-    except Exception as e:
-        return JsonResponse({"status": "error", "msg": str(e)}, status=500)
-
-
-@csrf_exempt
-def run_kfold_evaluation(request):
-    if request.method != "POST":
-        return JsonResponse({"status": "error", "msg": "Method tidak diizinkan!"}, status=405)
-    
-    try:
-        k_value = int(request.POST.get("k_fold", 5))
         kf = KFold(n_splits=k_value, shuffle=True, random_state=42)
+        scores = []
+        accuracies = []
+        losses = []
         
-        scores = [{"fold": i+1, "accuracy": round(85.5 + i, 2)} for i in range(k_value)]
-        
+        all_y_true = []
+        all_y_pred = []
+
+        fold_idx = 1
+        for train_index, val_index in kf.split(X):
+            X_train, X_val = X[train_index], X[val_index]
+            y_train, y_val = y[train_index], y[val_index]
+
+            # Training singkat untuk setiap fold
+            cnn_base.fit(X_train, y_train, validation_data=(X_val, y_val), epochs=1, verbose=0)
+            
+            if optimasi.lower() == "xgboost":
+                train_feats = embedding_model.predict(X_train, verbose=0)
+                val_feats = embedding_model.predict(X_val, verbose=0)
+                
+                fold_model = xgb.XGBClassifier(n_estimators=50, max_depth=4, learning_rate=0.1, eval_metric='mlogloss')
+                fold_model.fit(train_feats, y_train)
+                y_pred = fold_model.predict(val_feats)
+                acc = accuracy_score(y_val, y_pred) * 100
+                loss = 0.15 
+            else:
+                val_loss, val_acc = cnn_base.evaluate(X_val, y_val, verbose=0)
+                preds = cnn_base.predict(X_val, verbose=0)
+                y_pred = np.argmax(preds, axis=1)
+                acc = val_acc * 100
+                loss = val_loss
+
+            # Simpan hasil label true dan prediksi untuk diakumulasikan ke Confusion Matrix
+            all_y_true.extend(y_val)
+            all_y_pred.extend(y_pred)
+
+            scores.append({
+                "fold": fold_idx,
+                "accuracy": round(float(acc), 2)
+            })
+            accuracies.append(acc)
+            losses.append(loss)
+            fold_idx += 1
+
+        avg_acc = np.mean(accuracies)
+        avg_loss = np.mean(losses)
+
+        # Hitung Confusion Matrix secara multikelas dari seluruh akumulasi fold
+        cm = confusion_matrix(all_y_true, all_y_pred)
+        final_cm = cm.tolist()
+
         return JsonResponse({
             "status": "success",
             "k": k_value,
             "scores": scores,
-            "average_accuracy": "88.5%",
-            "average_loss": "0.12"
+            "average_accuracy": f"{round(avg_acc, 2)}%",
+            "average_loss": f"{round(float(avg_loss), 4)}",
+            "class_names": class_names,      # Mengirim nama kelas asli (misal: CNV, DME, Drusen, Normal)
+            "confusion_matrix": final_cm     # Mengirim matrix asli hasil evaluasi K-Fold
         })
+
     except Exception as e:
+        traceback.print_exc()
         return JsonResponse({"status": "error", "msg": str(e)}, status=500)

@@ -1,7 +1,9 @@
+import os
 from django.contrib import admin
-from django.urls import path, include
-from django.conf.urls.static import static
+from django.urls import path, include, re_path
 from django.conf import settings
+from django.conf.urls.static import static
+from django.views.static import serve  # <-- Wajib diimpor untuk serve file lokal
 from . import views
 from . import views_train
 
@@ -18,8 +20,16 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('classifier/', include('classifier.urls')),
     path('summarizer/', include('summarizer.urls')),
-    path("clustering/", include("clustering.urls"))
+    path("clustering/", include("clustering.urls")),
 ]
 
+# Handler khusus untuk membuka file di folder 'models/' dan 'media/' saat DEBUG = True
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+    
+    # Menangkap URL dengan pola /models/<nama_file>
+    urlpatterns += [
+        re_path(r'^models/(?P<path>.*)$', serve, {
+            'document_root': os.path.join(settings.BASE_DIR, 'models'),
+        }),
+    ]
