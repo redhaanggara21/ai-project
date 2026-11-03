@@ -15,12 +15,6 @@ from django.views.decorators.csrf import csrf_exempt
 from django.conf import settings
 from PIL import Image
 
-# Library ReportLab untuk Generate PDF di Backend
-from reportlab.lib.pagesizes import letter
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib import colors
-
 # ========================
 # Status Global Training
 # ========================
@@ -52,6 +46,11 @@ def update_progress(epoch, total, loss, acc):
 def generate_pdf_report(pdf_path, algoritma, optimasi, dataset, metrics, class_names):
     """Fungsi helper untuk membuat PDF laporan training dan menyimpannya di folder models/"""
     try:
+        from reportlab.lib.pagesizes import letter
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib import colors
+
         doc = SimpleDocTemplate(pdf_path, pagesize=letter, rightMargin=40, leftMargin=40, topMargin=40, bottomMargin=40)
         story = []
 
@@ -130,7 +129,6 @@ def generate_pdf_report(pdf_path, algoritma, optimasi, dataset, metrics, class_n
             story.append(Paragraph("<b>Confusion Matrix</b>", styles['Heading2']))
             story.append(Spacer(1, 6))
             
-            # Header tabel kelas
             cm_table_data = [["Predicted ->"] + class_names]
             for i, row in enumerate(cm):
                 row_label = class_names[i] if i < len(class_names) else f"Class {i}"
@@ -275,7 +273,7 @@ def start_training_classification(request):
 
                 y_pred = xgb_model.predict(X_val_emb)
 
-                # Simpan model bundle .pkl (Menyimpan model utama & embedding_model jika diperlukan)
+                # Simpan model bundle .pkl
                 model_bundle = {
                     "model": xgb_model,
                     "embedding_model": embedding_model,
@@ -345,9 +343,7 @@ def start_training_classification(request):
                 "scatter_features": scatter_data
             }
 
-            # =========================================================
-            # PROSES OTOMATIS GENERATE DAN SIMPAN PDF DI FOLDER MODELS/
-            # =========================================================
+            # Generate PDF Laporan
             generate_pdf_report(
                 pdf_path=pdf_path,
                 algoritma=algoritma,
@@ -436,7 +432,6 @@ def list_models(request):
             mod_time = os.path.getmtime(file_path)
             formatted_date = datetime.datetime.fromtimestamp(mod_time).strftime('%Y-%m-%d %H:%M:%S')
             
-            # Cek apakah file PDF laporan pendamping ada
             pdf_filename = f"{name_without_ext}.pdf"
             has_pdf = os.path.exists(os.path.join(MODEL_DIR, pdf_filename))
             
@@ -451,135 +446,9 @@ def list_models(request):
             
     return JsonResponse({"models": models_data})
 
-@csrf_exempt
-def run_testing(request):
-    print("\n" + "="*50)
-    print(" [FLOW] === Memulai eksekusi request run_testing ===")
-    
-    if request.method != "POST":
-        print(" [FLOW ERROR] Method tidak diizinkan:", request.method)
-        return JsonResponse({"status": "error", "msg": "Method tidak diizinkan!"}, status=405)
-
-    try:
-        model_filename = request.POST.get("select-model")
-        print(f" [FLOW] Model yang dipilih dari request: '{model_filename}'")
-        
-        if not model_filename:
-            print(" [FLOW ERROR] Nama model kosong.")
-            return JsonResponse({"status": "error", "msg": "Belum ada model yang dipilih!"})
-
-        model_path = os.path.join(settings.BASE_DIR, "models", model_filename)
-        print(f" [FLOW] Mencari file model di path: {model_path}")
-        
-        if not os.path.exists(model_path):
-            print(f" [FLOW ERROR] File model tidak ditemukan di path tersebut.")
-            return JsonResponse({"status": "error", "msg": f"File model {model_filename} tidak ditemukan."})
-
-        print(" [FLOW] Memuat model menggunakan joblib.load()...")
-        saved_bundle = joblib.load(model_path)
-        
-        # Ekstrak komponen dari bundle
-        if isinstance(saved_bundle, dict):
-            model = saved_bundle.get("model")                
-            embedding_model = saved_bundle.get("embedding_model") 
-            class_names = saved_bundle.get("class_names", [])
-            print(f" [FLOW] Bundle berupa dictionary. Tipe model: {type(model)}, Jumlah class_names: {len(class_names)}")
-        else:
-            model = saved_bundle
-            embedding_model = None
-            class_names = []
-            print(f" [FLOW] Bundle bukan dictionary. Tipe model: {type(model)}")
-
-        uploaded_files = request.FILES.getlist("test_file")
-        print(f" [FLOW] Jumlah file gambar yang diunggah: {len(uploaded_files)}")
-        
-        if not uploaded_files:
-            print(" [FLOW ERROR] Tidak ada file gambar dalam request.")
-            return JsonResponse({"status": "error", "msg": "Tidak ada file gambar yang diunggah."})
-
-        img_size = (224, 224)
-        results = []
-
-        for idx, f in enumerate(uploaded_files):
-            print(f"\n --- [FLOW] Memproses file ke-{idx+1}: {f.name} ---")
-            try:
-                image_bytes = f.read()
-                if not image_bytes:
-                    raise ValueError("File gambar kosong.")
-                print(f" [FLOW] Berhasil membaca bytes file ({len(image_bytes)} bytes)")
-
-                img_tensor = tf.image.decode_image(image_bytes, expand_animations=False)
-                print(f" [FLOW] Tensor decoded shape awal: {img_tensor.shape}")
-                
-                if len(img_tensor.shape) == 2:
-                    img_tensor = tf.expand_dims(img_tensor, -1)
-                
-                if img_tensor.shape[-1] == 1:
-                    img_tensor = tf.image.grayscale_to_rgb(img_tensor)
-                    print(" [FLOW] Mengubah grayscale ke RGB.")
-                elif img_tensor.shape[-1] > 3:
-                    img_tensor = img_tensor[..., :3]
-                    print(" [FLOW] Memotong channel melebihi 3.")
-
-                img_tensor.set_shape([None, None, 3])
-                img_tensor = tf.image.resize(img_tensor, img_size)
-                
-                # Normalisasi Rescaling
-                img_tensor = tf.cast(img_tensor, tf.float32) / 255.0
-                img_array = tf.expand_dims(img_tensor, 0)
-                print(f" [FLOW] Shape akhir img_array untuk prediksi: {img_array.shape}")
-
-                # Cek jenis model dan lakukan prediksi
-                if isinstance(model, xgb.XGBClassifier):
-                    print(" [FLOW] Model terdeteksi sebagai XGBoost. Melakukan ekstraksi fitur...")
-                    if embedding_model is None:
-                        raise ValueError("Model XGBoost memerlukan embedding_model yang valid di dalam bundle!")
-                    
-                    features = embedding_model.predict(img_array, verbose=0)
-                    print(f" [FLOW] Fitur berhasil diekstrak. Shape fitur: {features.shape}")
-                    
-                    prediction = model.predict(features)
-                    pred_idx = int(prediction[0])
-                else:
-                    print(" [FLOW] Model terdeteksi sebagai Keras/Sequential utuh. Melakukan prediksi langsung...")
-                    preds = model.predict(img_array, verbose=0)
-                    pred_idx = int(np.argmax(preds, axis=1)[0])
-
-                print(f" [FLOW] Prediksi indeks kelas: {pred_idx}")
-
-                if class_names and pred_idx < len(class_names):
-                    predicted_label = class_names[pred_idx]
-                else:
-                    predicted_label = f"Kelas {pred_idx}"
-
-                print(f" [FLOW SUCCESS] File {f.name} -> Label: {predicted_label}")
-                results.append({
-                    "file": f.name,
-                    "prediction": predicted_label
-                })
-                
-            except Exception as img_err:
-                print(f" [FLOW ERROR] Gagal memproses gambar {f.name}: {str(img_err)}")
-                traceback.print_exc()
-                err_msg = str(img_err)
-                results.append({
-                    "file": f.name,
-                    "prediction": "error",
-                    "msg": err_msg
-                })
-
-        print(" [FLOW] Selesai memproses semua file. Mengirim JSON response...")
-        print("="*50 + "\n")
-        return JsonResponse({"status": "success", "result": results})
-
-    except Exception as e:
-        print(f" [FLOW CRITICAL ERROR] Terjadi error di level utama view: {str(e)}")
-        traceback.print_exc()
-        return JsonResponse({"status": "error", "msg": str(e)}, status=500)
-
+      
 @csrf_exempt
 def run_kfold_evaluation(request):
-
     if request.method != "POST":
         return JsonResponse({"status": "error", "msg": "Method tidak diizinkan!"}, status=405)
     
@@ -598,13 +467,11 @@ def run_kfold_evaluation(request):
         img_size = (224, 224)
         batch_size = 32
 
-        # Muat dataset untuk evaluasi k-fold dari direktori
         full_ds = tf.keras.utils.image_dataset_from_directory(
             train_dir, image_size=img_size, batch_size=batch_size, shuffle=True
         )
-        class_names = full_ds.class_names  # Mengambil daftar nama kelas asli (folder dataset)
+        class_names = full_ds.class_names
 
-        # Ekstrak seluruh gambar dan label ke numpy array untuk K-Fold
         images_list = []
         labels_list = []
         for img_batch, lbl_batch in full_ds:
@@ -614,7 +481,6 @@ def run_kfold_evaluation(request):
         X = np.concatenate(images_list, axis=0)
         y = np.concatenate(labels_list, axis=0)
 
-        # Buat arsitektur CNN dasar & embedding model untuk ekstraksi fitur K-Fold
         inputs = tf.keras.Input(shape=(img_size[0], img_size[1], 3))
         x = tf.keras.layers.Rescaling(1.0 / 255)(inputs)
         x = tf.keras.layers.Conv2D(32, 3, activation='relu')(x)
@@ -642,7 +508,6 @@ def run_kfold_evaluation(request):
             X_train, X_val = X[train_index], X[val_index]
             y_train, y_val = y[train_index], y[val_index]
 
-            # Training singkat untuk setiap fold
             cnn_base.fit(X_train, y_train, validation_data=(X_val, y_val), epochs=1, verbose=0)
             
             if optimasi.lower() == "xgboost":
@@ -661,7 +526,6 @@ def run_kfold_evaluation(request):
                 acc = val_acc * 100
                 loss = val_loss
 
-            # Simpan hasil label true dan prediksi untuk diakumulasikan ke Confusion Matrix
             all_y_true.extend(y_val)
             all_y_pred.extend(y_pred)
 
@@ -676,7 +540,6 @@ def run_kfold_evaluation(request):
         avg_acc = np.mean(accuracies)
         avg_loss = np.mean(losses)
 
-        # Hitung Confusion Matrix secara multikelas dari seluruh akumulasi fold
         cm = confusion_matrix(all_y_true, all_y_pred)
         final_cm = cm.tolist()
 
@@ -686,10 +549,81 @@ def run_kfold_evaluation(request):
             "scores": scores,
             "average_accuracy": f"{round(avg_acc, 2)}%",
             "average_loss": f"{round(float(avg_loss), 4)}",
-            "class_names": class_names,      # Mengirim nama kelas asli (misal: CNV, DME, Drusen, Normal)
-            "confusion_matrix": final_cm     # Mengirim matrix asli hasil evaluasi K-Fold
+            "class_names": class_names,
+            "confusion_matrix": final_cm
         })
 
     except Exception as e:
         traceback.print_exc()
         return JsonResponse({"status": "error", "msg": str(e)}, status=500)
+
+@csrf_exempt
+def run_testing(request):
+    """Endpoint testing menggunakan TensorFlow native image decoding (Bersih & Tanpa Duplikasi)"""
+    if request.method != "POST":
+        return JsonResponse({"status": "error", "message": "Method tidak diizinkan!"}, status=405)
+
+    try:
+        model_name = request.POST.get("model_name", "")
+        
+        MODEL_DIR = os.path.join(settings.BASE_DIR, "models")
+        model_path = os.path.join(MODEL_DIR, model_name)
+
+        if not model_name or not os.path.exists(model_path):
+            return JsonResponse({
+                "status": "error",
+                "message": f"File model '{model_name}' tidak ditemukan di direktori models!"
+            }, status=404)
+
+        model_bundle = joblib.load(model_path)
+        model = model_bundle.get("model")
+        embedding_model = model_bundle.get("embedding_model", None)
+        class_names = model_bundle.get("class_names", [])
+
+        results = []
+        
+        if not request.FILES:
+            return JsonResponse({"status": "error", "message": "Tidak ada file gambar yang diunggah!"}, status=400)
+
+        for key, uploaded_file in request.FILES.items():
+            try:
+                # Membaca byte file gambar secara langsung (Aman dari error PIL Image)
+                image_bytes = uploaded_file.read()
+                
+                tensor = tf.image.decode_image(image_bytes, channels=3, expand_animations=False)
+                tensor = tf.image.resize(tensor, [224, 224])
+                
+                img_array = tensor.numpy().astype(np.float32) / 255.0
+                img_array = np.expand_dims(img_array, axis=0)
+
+                if embedding_model is not None:
+                    emb = embedding_model.predict(img_array, verbose=0)
+                    pred_idx = model.predict(emb)[0]
+                else:
+                    preds = model.predict(img_array, verbose=0)
+                    pred_idx = np.argmax(preds, axis=1)[0]
+
+                prediction_label = class_names[int(pred_idx)] if int(pred_idx) < len(class_names) else f"Class {pred_idx}"
+
+                results.append({
+                    "file": uploaded_file.name,
+                    "prediction": prediction_label,
+                    "msg": "success"
+                })
+
+            except Exception as file_err:
+                traceback.print_exc()
+                results.append({
+                    "file": uploaded_file.name,
+                    "prediction": "error",
+                    "msg": str(file_err)
+                })
+
+        return JsonResponse({
+            "status": "success",
+            "result": results
+        })
+
+    except Exception as e:
+        traceback.print_exc()
+        return JsonResponse({"status": "error", "message": str(e)}, status=500)

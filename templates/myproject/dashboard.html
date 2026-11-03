@@ -431,6 +431,8 @@
         formData.append('optimasi', document.getElementById('optimasi-input').value);
         formData.append('dataset', document.getElementById('dataset-input').value);
         formData.append('select-model', document.getElementById('selected-model').value);
+        // SESUAIKAN MENJADI 'model_name' AGAR TERBACA DI BACKEND
+        formData.append('model_name', document.getElementById('selected-model').value);
 
         Array.from(input.files).forEach(file => {
             formData.append('test_file', file);
@@ -451,7 +453,7 @@
         }, 20);
 
         // AJAX ke backend
-        fetch('/dashboard/run_testing/', {
+        fetch('/classifier/run-testing/', {
             method: 'POST',
             body: formData,
             headers: {
@@ -595,7 +597,7 @@
                 bar.style.width = progress + "%";
                 bar.innerText = progress + "%";
 
-                // Cek apakah training benar-benar error (status === "error")
+                // Cek apakah training error
                 if (data.status === "error") {
                     clearInterval(progressInterval);
                     bar.classList.add("bg-danger");
@@ -606,16 +608,20 @@
                     return;
                 }
 
-                // Jika progress sudah 100 atau status sudah "done"
-                if (progress >= 100 || data.status === "done") {
+                // HANYA SELESAI JIKA STATUS BACKEND BENAR-BENAR "done" 
+                // (Artinya epoch habis, model .pkl tersimpan, DAN file PDF laporan sudah selesai digenerate)
+                if (data.status === "done") {
                     clearInterval(progressInterval);
 
+                    bar.style.width = "100%";
+                    bar.innerText = "100% (Selesai)";
                     bar.classList.add("bg-success");
+                    
                     resultBtn.classList.remove("d-none");
                     resultBtn.innerText = "Lihat Hasil Training";
                     resultBtn.onclick = () => showTrainingResult();
                     
-                    // Otomatis refresh tabel daftar model setelah training selesai
+                    // Otomatis refresh tabel daftar model di bawah setelah file .pkl & .pdf matang
                     if (typeof fetchModelsList === 'function') {
                         fetchModelsList();
                     }

@@ -14,14 +14,12 @@ from .views_training_classification import (
 
 urlpatterns = [
     path('', views.home_view, name='home'),
-    path('train', views.train_page, name='train_page'),
+    path('train/', views.train_page, name='train_page'),
     path('upload-page/', views_upload.upload_page, name='upload_page'),
     path('upload-process/', views_upload.upload, name='upload-process'),
     path('start-training/', views_train.start_training, name='start_training'),
-    # path('start-training-cnn-xgboost/', views_train.start_training, name='start_training_cnn_xgboost'),
-    # path('start-training-cnn/', views_train.start_training, name='start_training_cnn'),
-   path('get-results/', views_train.get_results, name='get_results'),
-    path("get-progress/", views_train.get_progress, name="get_progress"),
+    path('get-results/', views_train.get_results, name='get_results'),
+    path('get-progress/', views_train.get_progress, name='get_progress'),
     path('stop-training/', views_train.stop_training, name='stop_training'),
     path('start-evaluation/', views_kfold_evaluate.start_kfold_evaluate, name='start_evaluation'),
     path('get-progress-training/', views_train.get_progress, name='get_progress_training'),
@@ -31,11 +29,12 @@ urlpatterns = [
     path('kfold/', views.kfold_page, name='kfold_page'),
     path('kfold/start/', views_kfold_evaluate.start_kfold_evaluate, name='start_kfold_evaluate'),
     path('kfold/progress/', views_kfold_evaluate.get_kfold_progress, name='get_kfold_progress'),
-    path('classifier/train/', start_training_classification, name='start_training_classification'),
-    path('classifier/get-progress/', get_training_progress, name='get_training_progress'),
-    path('classifier/get-results/', get_training_results, name='get_training_results'),
-    path('classifier/run-testing/', run_testing, name='run_testing'),
-    # Endpoint opsional jika evaluasi K-Fold ingin diproses di backend Python
+    
+    # URL Classifier yang benar (tanpa awalan 'classifier/' karena sudah di-include di root)
+    path('train-classification/', start_training_classification, name='start_training_classification'),
+    path('get-progress-classification/', get_training_progress, name='get_training_progress'),
+    path('get-results-classification/', get_training_results, name='get_training_results'),
+    path('run-testing/', run_testing, name='run_testing'),
     path('run-kfold/', run_kfold_evaluation, name='run_kfold_evaluation'),
-    path('list_models/', list_models, name='list_models'),
+    path('list-models/', list_models, name='list_models'),
 ]
