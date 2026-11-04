@@ -147,7 +147,7 @@ python manage.py test tests.test_unit
 
 ## Lisensi
 
-MIT License © 2026
+MIK License © 2026
 
 ```
 

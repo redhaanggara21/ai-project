@@ -155,37 +155,37 @@
     </div>
 
    <!-- 4. EVALUATION -->
-<div class="dashboard-section">
-    <h4>Evaluation</h4>
-    <div class="progress mb-1" style="height:14px;">
-        <div class="progress-bar bg-warning" id="eval-progress" style="width:0%;">0%</div>
+    <div class="dashboard-section">
+        <h4>Evaluation</h4>
+        <div class="progress mb-1" style="height:14px;">
+            <div class="progress-bar bg-warning" id="eval-progress" style="width:0%;">0%</div>
+        </div>
+        <ul class="mb-2" style="font-size: 13px; padding-left: 15px;">
+            <li id="eval-accuracy">Akurasi: -</li>
+            <li id="eval-loss">Loss: -</li>
+            <li>Confusion Matrix: <a href="#" id="cm-link" class="text-primary text-decoration-underline" style="pointer-events: none; color: #6c757d !important;">[link]</a></li>
+        </ul>
+        <button class="btn btn-info btn-sm w-100" id="refresh-eval" disabled>Refresh Evaluation</button>
+        <button class="btn btn-link btn-sm w-100 mt-1 d-none" id="eval-result"><i class="fa-solid fa-arrow-up-right-from-square"></i> Lihat Hasil K-Fold</button>
     </div>
-    <ul class="mb-2" style="font-size: 13px; padding-left: 15px;">
-        <li id="eval-accuracy">Akurasi: -</li>
-        <li id="eval-loss">Loss: -</li>
-        <li>Confusion Matrix: <a href="#" id="cm-link" class="text-primary text-decoration-underline" style="pointer-events: none; color: #6c757d !important;">[link]</a></li>
-    </ul>
-    <button class="btn btn-info btn-sm w-100" id="refresh-eval" disabled>Refresh Evaluation</button>
-    <button class="btn btn-link btn-sm w-100 mt-1 d-none" id="eval-result"><i class="fa-solid fa-arrow-up-right-from-square"></i> Lihat Hasil K-Fold</button>
-</div>
 
-<!-- Modal Sederhana untuk Popup Evaluasi & K-Fold -->
-<div class="modal fade" id="evalResultModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="evalModalTitle">Hasil Evaluasi</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body" id="evalModalBody">
-                <!-- Konten dinamis (Confusion Matrix atau K-Fold Table) -->
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Tutup</button>
+   <!-- Modal Tunggal Terpadu untuk Grafik K-Fold, Rincian Fold, & Confusion Matrix -->
+    <div class="modal fade" id="evalResultModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title" id="evalModalTitle">Hasil Evaluasi & K-Fold</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" id="evalModalBody">
+                    <!-- Konten dinamis otomatis dimuat di sini oleh JavaScript -->
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Tutup</button>
+                </div>
             </div>
         </div>
     </div>
-</div>
 
 </div>
 
@@ -831,42 +831,60 @@
 </script>
 
 <script>
+    
+    // Perilaku Radio Button
     document.querySelectorAll('input[type="radio"]').forEach(radio => {
         radio.addEventListener('click', function () {
             if (this.previousChecked) {
-                this.checked = false;      // unselect radio
+                this.checked = false;    // unselect radio
             }
             this.previousChecked = this.checked;
         });
     });
 
-    // Tambahkan classNames ke dalam data store
+    // Data store global
     let kfoldDataStore = { k: 0, scores: [], confMatrix: null, classNames: [] };
 
-    // Trigger K-Fold Evaluation nyata ke Backend Django saat tombol Refresh Evaluation diklik
-   document.getElementById('refresh-eval').addEventListener('click', function () {
+    document.getElementById('refresh-eval').addEventListener('click', function () {
+        console.log("1. Tombol Refresh Evaluation berhasil diklik");
+
         let kfoldInput = prompt('Masukkan jumlah K-Fold Cross Validation:', 5);
+        if (kfoldInput === null) return;
+
         let k = parseInt(kfoldInput);
-        if (isNaN(k) || k < 2) return alert('Jumlah K-Fold minimal 2!');
+        if (isNaN(k) || k < 2) {
+            alert('Jumlah K-Fold minimal 2!');
+            return;
+        }
 
         let bar = document.getElementById('eval-progress'); 
-        bar.style.width = '0%'; 
-        bar.textContent = '0%'; 
-        document.getElementById('eval-result').classList.add('d-none');
+        if (bar) {
+            bar.style.width = '0%'; 
+            bar.textContent = '0%';
+        }
+
+        let evalResult = document.getElementById('eval-result');
+        if (evalResult) evalResult.classList.add('d-none');
+
+        let rocContainer = document.getElementById('roc-container');
+        if (rocContainer) rocContainer.classList.add('d-none');
 
         let width = 0; 
         let interval = setInterval(() => {
-            // Naikkan secara perlahan hingga maksimal 95% sambil menunggu backend selesai
-            if (width < 95) {
+            if (width < 95 && bar) {
                 width += 2; 
                 bar.style.width = width + '%'; 
                 bar.textContent = width + '%'; 
             }
         }, 150);
 
-        let datasetVal = document.getElementById('dataset-input').value || 'Retina';
-        let optimasiVal = document.getElementById('optimasi-input').value || 'XGBoost';
-        let algoritmaVal = document.getElementById('algoritma-input').value || 'CNN';
+        let datasetEl = document.getElementById('dataset-input');
+        let optimasiEl = document.getElementById('optimasi-input');
+        let algoritmaEl = document.getElementById('algoritma-input');
+
+        let datasetVal = datasetEl ? datasetEl.value : 'Retina';
+        let optimasiVal = optimasiEl ? optimasiEl.value : 'XGBoost';
+        let algoritmaVal = algoritmaEl ? algoritmaEl.value : 'CNN';
 
         const formData = new FormData();
         formData.append('k_fold', k);
@@ -874,7 +892,6 @@
         formData.append('optimasi', optimasiVal);
         formData.append('algorimta', algoritmaVal);
 
-        // Panggil endpoint yang benar
         fetch('/classifier/run-kfold/', {
             method: 'POST',
             body: formData,
@@ -885,89 +902,179 @@
         .then(res => res.json())
         .then(data => {
             clearInterval(interval);
-            bar.style.width = '100%';
-            bar.textContent = '100%';
+            if (bar) {
+                bar.style.width = '100%';
+                bar.textContent = '100%';
+            }
 
             if (data.status === 'success') {
-                document.getElementById('eval-result').classList.remove('d-none');
-
                 kfoldDataStore.k = data.k;
-                kfoldDataStore.scores = data.scores;
-                
-                // Ambil data kelas asli & Confusion Matrix multikelas dari backend
+                kfoldDataStore.scores = data.scores || [];
                 kfoldDataStore.classNames = data.class_names || [];
                 kfoldDataStore.confMatrix = data.confusion_matrix || null;
 
-                document.getElementById('eval-accuracy').textContent = 'Akurasi: ' + data.average_accuracy;
-                document.getElementById('eval-loss').textContent = 'Loss: ' + data.average_loss;
+                if (evalResult) {
+                    evalResult.classList.remove('d-none');
+                }
+
+                let evalAcc = document.getElementById('eval-accuracy');
+                if (evalAcc) evalAcc.textContent = 'Akurasi: ' + data.average_accuracy;
+
+                let evalLoss = document.getElementById('eval-loss');
+                if (evalLoss) evalLoss.textContent = 'Loss: ' + data.average_loss;
+
+                if (data.roc_curve && rocContainer) {
+                    const rocImg = document.getElementById('eval-roc-curve');
+                    if (rocImg) rocImg.src = data.roc_curve; 
+                    rocContainer.classList.remove('d-none');
+                }
 
                 const cmLink = document.getElementById('cm-link');
-                cmLink.style.pointerEvents = 'auto';
-                cmLink.style.color = '#0d6efd !important';
+                if (cmLink) {
+                    cmLink.style.pointerEvents = 'auto';
+                    cmLink.style.color = '#0d6efd !important';
+                }
             } else {
                 alert(data.msg || 'Gagal menjalankan K-Fold Evaluation');
             }
         })
         .catch(err => {
             clearInterval(interval);
-            bar.style.width = '0%';
-            bar.textContent = 'Error!';
-            console.error('Error K-Fold:', err);
-            alert('Terjadi kesalahan koneksi ke server atau URL endpoint tidak ditemukan.');
+            if (bar) {
+                bar.style.width = '0%';
+                bar.textContent = 'Error!';
+            }
+            console.error('Error K-Fold (Catch):', err);
+            alert('Terjadi kesalahan koneksi ke server.');
         });
     });
 
-    // 1. Event klik link [link] Confusion Matrix (Merender nama kelas dinamis)
-    document.getElementById('cm-link').addEventListener('click', function(e) {
-        e.preventDefault();
-        if (!kfoldDataStore.confMatrix) return alert('Lakukan Refresh Evaluation terlebih dahulu atau matrix belum tersedia!');
+    // ==========================================
+    // FUNGSI TUNGGAL TERPADU (Mencegah Modal Ganda)
+    // ==========================================
+    function showUnifiedEvaluationModal() {
+        const scores = kfoldDataStore.scores;
+        if (!scores || scores.length === 0) {
+            alert('Data skor K-Fold belum tersedia. Silakan jalankan Refresh Evaluation terlebih dahulu.');
+            return;
+        }
 
-        document.getElementById('evalModalTitle').textContent = 'Confusion Matrix Evaluation';
-        
+        document.getElementById('evalModalTitle').textContent = `Visualisasi Grafik & Hasil K-Fold Cross Validation (K = ${kfoldDataStore.k})`;
+
+        // 1. Susun Konten HTML di dalam Modal (Grafik di posisi paling atas)
+        let modalBodyHTML = `
+            <div class="mb-4">
+                <h6 class="fw-bold text-secondary mb-2">Grafik Akurasi per Fold</h6>
+                <div id="kfold-chart-plot" style="width:100%; height:320px;"></div>
+            </div>
+            <hr class="my-4">
+        `;
+
+        // 2. Tabel Rincian Skor per Fold
+        modalBodyHTML += `
+            <h6 class="fw-bold text-secondary mb-2">Rincian Akurasi Lipatan (Fold)</h6>
+            <div class="table-responsive mb-4">
+                <table class="table table-striped table-bordered text-center align-middle mb-0">
+                    <thead class="table-light">
+                        <tr><th>Lipatan (Fold)</th><th>Akurasi (%)</th></tr>
+                    </thead>
+                    <tbody>
+        `;
+        scores.forEach((item, idx) => {
+            let foldNum = item.fold !== undefined ? item.fold : (idx + 1);
+            let accVal = item.accuracy !== undefined ? item.accuracy : (item * 100).toFixed(2);
+            modalBodyHTML += `<tr><td>Fold ${foldNum}</td><td>${accVal}%</td></tr>`;
+        });
+        modalBodyHTML += `</tbody></table></div>`;
+
+        // 3. Confusion Matrix Bergaya Heatmap Profesional
+        modalBodyHTML += `<h6 class="fw-bold text-secondary mb-2">Confusion Matrix Evaluasi</h6>`;
         let cm = kfoldDataStore.confMatrix;
-        
-        // Ambil nama kelas dinamis berdasarkan jumlah baris matrix
-        let classNames = (kfoldDataStore.classNames && kfoldDataStore.classNames.length === cm.length) 
-            ? kfoldDataStore.classNames 
-            : cm.map((_, i) => `Class ${i}`);
+        if (cm && Array.isArray(cm) && cm.length > 0) {
+            let classNames = (kfoldDataStore.classNames && kfoldDataStore.classNames.length === cm.length) 
+                ? kfoldDataStore.classNames 
+                : cm.map((_, i) => `Class ${i}`);
 
-        let html = '<table class="table table-bordered text-center mb-0"><thead><tr><th>Actual \\ Pred</th>';
-        classNames.forEach(name => { 
-            html += `<th>${name}</th>`; 
-        });
-        html += '</tr></thead><tbody>';
+            let maxVal = Math.max(...cm.flat());
 
-        cm.forEach((row, rIdx) => {
-            html += `<tr><td><strong>${classNames[rIdx]}</strong></td>`;
-            row.forEach(val => { 
-                html += `<td>${val}</td>`; 
+            modalBodyHTML += `
+                <div class="table-responsive">
+                    <table class="table table-bordered text-center align-middle mb-0">
+                        <thead>
+                            <tr class="table-light"><th>Actual \\ Pred</th>
+            `;
+            classNames.forEach(name => { modalBodyHTML += `<th>${name}</th>`; });
+            modalBodyHTML += `</tr></thead><tbody>`;
+
+            cm.forEach((row, rIdx) => {
+                modalBodyHTML += `<tr><td class="table-light"><strong>${classNames[rIdx]}</strong></td>`;
+                row.forEach((val, cIdx) => {
+                    // Berikan style heatmap (Hijau jika benar/diagonal, Merah transparan jika salah)
+                    let intensity = maxVal > 0 ? (val / maxVal) : 0;
+                    let bgColor = (rIdx === cIdx) 
+                        ? `rgba(40, 167, 69, ${0.15 + intensity * 0.6})` 
+                        : (val > 0 ? `rgba(220, 53, 69, ${0.1 + intensity * 0.4})` : 'transparent');
+                    
+                    modalBodyHTML += `<td style="background-color: ${bgColor}; font-weight: bold;">${val}</td>`;
+                });
+                modalBodyHTML += `</tr>`;
             });
-            html += '</tr>';
-        });
-        html += '</tbody></table>';
+            modalBodyHTML += `</tbody></table></div>`;
+        } else {
+            modalBodyHTML += `<p class="text-muted text-center">Confusion matrix tidak tersedia.</p>`;
+        }
 
-        document.getElementById('evalModalBody').innerHTML = html;
-        new bootstrap.Modal(document.getElementById('evalResultModal')).show();
-    });
-    
-    // 2. Event klik tombol "Lihat Hasil K-Fold"
-    document.getElementById('eval-result').addEventListener('click', function() {
-        if (kfoldDataStore.scores.length === 0) return alert('Belum ada data K-Fold!');
+        // Masukkan ke body modal utama
+        document.getElementById('evalModalBody').innerHTML = modalBodyHTML;
 
-        document.getElementById('evalModalTitle').textContent = `Hasil K-Fold Cross Validation (K = ${kfoldDataStore.k})`;
-        
-        let html = `<table class="table table-striped table-bordered text-center mb-0">
-            <thead><tr><th>Lipatan (Fold)</th><th>Akurasi (%)</th></tr></thead><tbody>`;
-        
-        kfoldDataStore.scores.forEach(item => {
-            html += `<tr><td>Fold ${item.fold}</td><td>${item.accuracy}%</td></tr>`;
-        });
-        html += '</tbody></table>';
+        // Tampilkan HANYA 1 Modal menggunakan getOrCreateInstance
+        const modalElement = document.getElementById('evalResultModal');
+        const modalInstance = bootstrap.Modal.getOrCreateInstance(modalElement);
+        modalInstance.show();
 
-        document.getElementById('evalModalBody').innerHTML = html;
-        new bootstrap.Modal(document.getElementById('evalResultModal')).show();
-    });
-    
+        // Render Grafik Plotly setelah modal terbuka agar ukuran canvas akurat
+        setTimeout(() => {
+            let rawScores = scores.map(s => typeof s === 'object' ? (s.accuracy / 100) : s);
+            let foldLabels = rawScores.map((_, i) => `Fold ${i + 1}`);
+            let textValues = rawScores.map(s => (s * 100).toFixed(2) + '%');
+
+            const trace = {
+                x: foldLabels,
+                y: rawScores,
+                type: 'bar',
+                marker: { color: '#0dcaf0' },
+                text: textValues,
+                textposition: 'auto'
+            };
+
+            const layout = {
+                title: `Akurasi Tiap Fold (K = ${kfoldDataStore.k})`,
+                xaxis: { title: 'Fold' },
+                yaxis: { title: 'Akurasi', range: [0, 1.05] },
+                margin: { t: 30, b: 30, l: 40, r: 20 }
+            };
+
+            Plotly.newPlot('kfold-chart-plot', [trace], layout, { responsive: true });
+        }, 200);
+    }
+
+    // Hubungkan event klik link [link] Confusion Matrix ke fungsi tunggal
+    const cmLink = document.getElementById('cm-link');
+    if (cmLink) {
+        cmLink.onclick = function (e) {
+            e.preventDefault();
+            showUnifiedEvaluationModal();
+        };
+    }
+
+    // Hubungkan event klik tombol "Lihat Hasil K-Fold" ke fungsi tunggal
+    const evalResultBtn = document.getElementById('eval-result');
+    if (evalResultBtn) {
+        evalResultBtn.onclick = function (e) {
+            e.preventDefault();
+            showUnifiedEvaluationModal();
+        };
+    }    
 </script>
 
 {% endblock %}

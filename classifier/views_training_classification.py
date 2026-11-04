@@ -14,7 +14,17 @@ from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.conf import settings
 from PIL import Image
-
+import io
+import base64
+import matplotlib
+matplotlib.use('Agg') # Wajib agar Matplotlib berjalan stabil di background server (Django)
+import matplotlib.pyplot as plt
+from sklearn.metrics import roc_curve, auc
+from sklearn.preprocessing import label_binarize
+import numpy as np
+from django.http import JsonResponse
+from sklearn.model_selection import StratifiedKFold
+# (Impor modul model machine learning dan metrik evaluasi Anda di sini)
 # ========================
 # Status Global Training
 # ========================
@@ -471,6 +481,7 @@ def run_kfold_evaluation(request):
             train_dir, image_size=img_size, batch_size=batch_size, shuffle=True
         )
         class_names = full_ds.class_names
+        n_classes = len(class_names)
 
         images_list = []
         labels_list = []
@@ -489,22 +500,26 @@ def run_kfold_evaluation(request):
         x = tf.keras.layers.MaxPooling2D()(x)
         flatten_out = tf.keras.layers.Flatten(name="flatten_layer")(x)
         x_dense = tf.keras.layers.Dense(128, activation='relu')(flatten_out)
-        outputs = tf.keras.layers.Dense(len(class_names), activation='softmax')(x_dense)
+        outputs = tf.keras.layers.Dense(n_classes, activation='softmax')(x_dense)
 
         cnn_base = Model(inputs=inputs, outputs=outputs)
         embedding_model = Model(inputs=inputs, outputs=flatten_out)
         cnn_base.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
 
-        kf = KFold(n_splits=k_value, shuffle=True, random_state=42)
+        # Menggunakan StratifiedKFold agar distribusi kelas tiap fold seimbang
+        from sklearn.model_selection import StratifiedKFold
+        kf = StratifiedKFold(n_splits=k_value, shuffle=True, random_state=42)
+        
         scores = []
         accuracies = []
         losses = []
         
         all_y_true = []
         all_y_pred = []
+        all_y_proba = [] # Menampung probabilitas untuk ROC
 
         fold_idx = 1
-        for train_index, val_index in kf.split(X):
+        for train_index, val_index in kf.split(X, y):
             X_train, X_val = X[train_index], X[val_index]
             y_train, y_val = y[train_index], y[val_index]
 
@@ -516,18 +531,22 @@ def run_kfold_evaluation(request):
                 
                 fold_model = xgb.XGBClassifier(n_estimators=50, max_depth=4, learning_rate=0.1, eval_metric='mlogloss')
                 fold_model.fit(train_feats, y_train)
+                
                 y_pred = fold_model.predict(val_feats)
+                y_proba = fold_model.predict_proba(val_feats) # Ambil nilai probabilitas
                 acc = accuracy_score(y_val, y_pred) * 100
                 loss = 0.15 
             else:
                 val_loss, val_acc = cnn_base.evaluate(X_val, y_val, verbose=0)
-                preds = cnn_base.predict(X_val, verbose=0)
+                preds = cnn_base.predict(X_val, verbose=0) # Ini sudah nilai probabilitas (softmax)
+                y_proba = preds
                 y_pred = np.argmax(preds, axis=1)
                 acc = val_acc * 100
                 loss = val_loss
 
             all_y_true.extend(y_val)
             all_y_pred.extend(y_pred)
+            all_y_proba.extend(y_proba)
 
             scores.append({
                 "fold": fold_idx,
@@ -539,9 +558,58 @@ def run_kfold_evaluation(request):
 
         avg_acc = np.mean(accuracies)
         avg_loss = np.mean(losses)
-
         cm = confusion_matrix(all_y_true, all_y_pred)
-        final_cm = cm.tolist()
+
+        # ==================== PEMBUATAN KURVA ROC MULTI-CLASS ====================
+        y_true_arr = np.array(all_y_true)
+        y_proba_arr = np.array(all_y_proba)
+        
+        plt.figure(figsize=(7, 6))
+        
+        # Binarize label untuk kalkulasi ROC Multi-kelas
+        y_true_bin = label_binarize(y_true_arr, classes=list(range(n_classes)))
+        
+        # Jika biner (2 kelas), perbaiki dimensi binarize-nya
+        if n_classes == 2:
+            fpr, tpr, _ = roc_curve(y_true_arr, y_proba_arr[:, 1])
+            roc_auc = auc(fpr, tpr)
+            plt.plot(fpr, tpr, lw=2, label=f'ROC Curve (AUC = {roc_auc:.2f})')
+        else:
+            # Hitung Macro Average ROC untuk Multi-kelas
+            fpr = dict()
+            tpr = dict()
+            roc_auc = dict()
+            for i in range(n_classes):
+                fpr[i], tpr[i], _ = roc_curve(y_true_bin[:, i], y_proba_arr[:, i])
+                roc_auc[i] = auc(fpr[i], tpr[i])
+                plt.plot(fpr[i], tpr[i], alpha=0.5, lw=1.5, label=f'Kelas {class_names[i]} (AUC = {roc_auc[i]:.2f})')
+            
+            # Hitung rata-rata macro
+            all_fpr = np.unique(np.concatenate([fpr[i] for i in range(n_classes)]))
+            mean_tpr = np.zeros_like(all_fpr)
+            for i in range(n_classes):
+                mean_tpr += np.interp(all_fpr, fpr[i], tpr[i])
+            mean_tpr /= n_classes
+            macro_auc = auc(all_fpr, mean_tpr)
+            plt.plot(all_fpr, mean_tpr, color='blue', linestyle=':', lw=2.5, label=f'Macro-Average ROC (AUC = {macro_auc:.2f})')
+
+        plt.plot([0, 1], [0, 1], color='red', linestyle='--', lw=1.5, label='Chance (AUC = 0.50)')
+        plt.xlim([-0.05, 1.05])
+        plt.ylim([-0.05, 1.05])
+        plt.xlabel('False Positive Rate (FPR)')
+        plt.ylabel('True Positive Rate (TPR)')
+        plt.title(f'Kurva ROC - K-Fold Evaluation ({optimasi})')
+        plt.legend(loc="lower right", fontsize=9)
+        plt.grid(True, linestyle=':', alpha=0.6)
+
+        # Ubah grafik matplotlib menjadi Base64 String
+        buffer = io.BytesIO()
+        plt.savefig(buffer, format='png', bbox_inches='tight', dpi=150)
+        buffer.seek(0)
+        image_base64 = base64.b64encode(buffer.read()).decode('utf-8')
+        buffer.close()
+        plt.close() # Hapus plot dari memori backend
+        # =========================================================================
 
         return JsonResponse({
             "status": "success",
@@ -550,12 +618,14 @@ def run_kfold_evaluation(request):
             "average_accuracy": f"{round(avg_acc, 2)}%",
             "average_loss": f"{round(float(avg_loss), 4)}",
             "class_names": class_names,
-            "confusion_matrix": final_cm
+            "confusion_matrix": cm.tolist(),
+            "roc_curve": f"data:image/png;base64,{image_base64}" # Dikirimkan ke template
         })
 
     except Exception as e:
         traceback.print_exc()
         return JsonResponse({"status": "error", "msg": str(e)}, status=500)
+
 
 @csrf_exempt
 def run_testing(request):
@@ -627,3 +697,37 @@ def run_testing(request):
     except Exception as e:
         traceback.print_exc()
         return JsonResponse({"status": "error", "message": str(e)}, status=500)
+
+def run_kfold_view(request):
+    if request.method == 'POST':
+        k_fold = int(request.POST.get('k_fold', 5))
+        dataset_name = request.POST.get('dataset', 'Retina')
+        optimasi = request.POST.get('optimasi', 'XGBoost')
+        algoritma = request.POST.get('algorimta', 'CNN') # Perhatikan penamaan parameter dari JS
+
+        try:
+            # --- CONTOH SIMULASI PROSES K-FOLD (Sesuaikan dengan logika training model Anda) ---
+            # scores = [0.85, 0.88, 0.82, 0.90, 0.87]  # Contoh akurasi per fold
+            # avg_acc = np.mean(scores)
+            # avg_loss = 0.25
+            # conf_matrix = [[45, 5], [3, 47]]
+            # class_names = ['Normal', 'Abnormal']
+            # -------------------------------------------------------------------------------
+
+            # Data dummy respons JSON (Ganti dengan hasil eksekusi model asli Anda)
+            response_data = {
+                'status': 'success',
+                'k': k_fold,
+                'scores': [0.85, 0.89, 0.83, 0.91, 0.86], # Contoh list akurasi per fold
+                'average_accuracy': '86.8%',
+                'average_loss': '0.245',
+                'confusion_matrix': [[45, 5], [3, 47]],
+                'class_names': ['Kelas A', 'Kelas B'],
+                # 'roc_curve': 'data:image/png;base64,...' (Opsional jika ada base64 kurva ROC)
+            }
+            return JsonResponse(response_data)
+
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'msg': str(e)}, status=400)
+            
+    return JsonResponse({'status': 'error', 'msg': 'Invalid request method'}, status=405)
