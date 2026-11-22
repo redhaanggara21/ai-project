@@ -147,8 +147,8 @@ python manage.py test tests.test_unit
 
 ## Lisensi
 
-MIK License © 2026
+year © 2026
 
 ```
-
+    Jurnal Publish For this Project: https://jurnal.unidha.ac.id/index.php/jiska/article/view/2763/1372
 ```
