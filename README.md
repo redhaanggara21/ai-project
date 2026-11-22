@@ -1,5 +1,3 @@
-Berikut adalah file **`README.md`** lengkap, profesional, dan siap pakai untuk proyek Django CNN + XGBoost Anda:
-
 ```markdown
 # Django CNN + XGBoost Image Processing
 
